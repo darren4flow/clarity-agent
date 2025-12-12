@@ -1,38 +1,47 @@
 import asyncio
+
+from starlette.websockets import WebSocketDisconnect
+
 from bedrock_agentcore import BedrockAgentCoreApp
 
 app = BedrockAgentCoreApp()
 
 @app.websocket
 async def websocket_handler(websocket, context):
-    """Simple echo WebSocket handler."""
     await websocket.accept()
-
+    disconnected = False
     try:
         while True:
             try:
-                data = await websocket.receive_json()
+                event = await websocket.receive()
             except asyncio.CancelledError:
-                # Propagate cancellation so upstream shutdown logic keeps working.
                 raise
+            except WebSocketDisconnect:
+                disconnected = True
+                break
             except Exception as receive_error:
                 print(f"Receive error: {receive_error}")
                 break
 
-            if data is None:
-                # Treat null payloads as keep-alives; ignore and continue.
-                continue
+            typ = event.get("type")
 
-            try:
-                # Echo back
-                await websocket.send_json({"echo": data})
-            except Exception as send_error:
-                print(f"Send error: {send_error}")
+            if typ == "websocket.receive":
+                if event.get("bytes") is not None:
+                    chunk = event["bytes"]
+                    if chunk:
+                        await websocket.send_bytes(chunk)  # echo PCM
+                elif event.get("text") is not None:
+                    text = event["text"]
+                    await websocket.send_text(text)       # echo JSON/text
+            elif typ == "websocket.disconnect":
+                disconnected = True
                 break
-    except Exception as e:
-        print(f"Error: {e}")
     finally:
-        await websocket.close()
+        if not disconnected:
+            try:
+                await websocket.close()
+            except Exception as close_error:
+                print(f"Close error: {close_error}")
 
 if __name__ == "__main__":
     app.run(log_level="info")
