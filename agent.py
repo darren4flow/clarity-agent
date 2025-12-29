@@ -44,6 +44,15 @@ async def websocket_handler(websocket, context):
     logger.info(f"WebSocket connection attempted from {websocket.client}")
     logger.debug(f"Headers: {websocket.headers}")
     
+    user_id = websocket.query_params.get("userId", None)
+    if not user_id:
+        logger.warning("Missing userId in query parameters")
+        await websocket.close(code=1008)  # Policy Violation
+        return
+    timezone = websocket.query_params.get("timezone", None)
+    if not timezone:
+        logger.warning("Missing timezone in query parameters, defaulting to UTC")
+    
     # Accept the WebSocket connection
     await websocket.accept()
     logger.info(f"WebSocket connection accepted")
@@ -89,7 +98,7 @@ async def websocket_handler(websocket, context):
 
                         # Create a new stream manager for this connection
                         stream_manager = S2sSessionManager(
-                            model_id="amazon.nova-2-sonic-v1:0", region=aws_region
+                            model_id="amazon.nova-2-sonic-v1:0", region=aws_region, user_id=user_id, timezone=timezone
                         )
 
                         # Initialize the Bedrock stream
@@ -340,11 +349,11 @@ async def forward_responses(websocket: WebSocket, stream_manager):
                     await websocket.send_text(chunk_json)
 
                     if len(events_to_send) > 1:
-                        logger.info(
+                        logger.debug(
                             f"Forwarded {event_type} chunk {idx + 1}/{len(events_to_send)} to client (size: {chunk_size} bytes)"
                         )
                     else:
-                        logger.info(
+                        logger.debug(
                             f"Forwarded {event_type} to client (size: {chunk_size} bytes)"
                         )
 
