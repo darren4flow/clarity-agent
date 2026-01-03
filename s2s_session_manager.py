@@ -414,7 +414,7 @@ class S2sSessionManager:
                   new_event = {
                     "id": str(uuid.uuid4()),
                     "userId": self.user_id,
-                    "done": False,
+                    "done": event_details.get("done", False),
                     "description": event_title,
                     "habitId": None,
                     "allDay": event_details.get("all_day", False),

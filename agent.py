@@ -189,7 +189,7 @@ async def websocket_handler(websocket, context):
                     except Exception:
                         pass
                     
-            except WebSocketDisconnect:
+            except WebSocketDisconnect as e:
                 logger.info(f"WebSocket disconnected: {websocket.client}")
                 logger.info(
                     f"Disconnect details: code={getattr(e, 'code', 'N/A')}, reason={getattr(e, 'reason', 'N/A')}"
