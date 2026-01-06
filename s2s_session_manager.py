@@ -13,6 +13,8 @@ import boto3
 from boto3.dynamodb.types import TypeSerializer
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from opensearchpy import OpenSearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -22,6 +24,20 @@ logger = logging.getLogger(__name__)
 
 ddb_client = boto3.client('dynamodb', region_name='us-east-1')
 serializer = TypeSerializer()
+bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
+
+# Initialize OpenSearch client
+os_host = "search-clarity-domain-act5b626lr54k4h722hub6uxhe.us-east-1.es.amazonaws.com"
+credentials = boto3.Session().get_credentials()
+awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, 'us-east-1', 'es', session_token=credentials.token)
+opensearch_client = OpenSearch(
+    hosts = [{'host': os_host, 'port': 443}],
+    http_auth = awsauth,
+    use_ssl = True,
+    verify_certs = True,
+    connection_class = RequestsHttpConnection
+)
+
 
 class S2sSessionManager:
     """Manages bidirectional streaming with AWS Bedrock using asyncio"""
@@ -433,6 +449,94 @@ class S2sSessionManager:
                 
                 logger.info(f"Created event: {result}")
                 logger.info(f"Event details: {event_details}")
+                
+            elif toolName == "delete_event":
+                try:
+                    logger.info(f"Processing delete_event with content: {content}")
+                    event_details = json.loads(content)
+                    event_title = event_details.get("title")
+                    naive_start_datetime = event_details.get("start_datetime")
+                    start_datetime = None
+                    
+                    logger.info(f"Searching for event to delete: title='{event_title}', start_datetime='{naive_start_datetime}'")
+                    # 1. Vectorize and Hybrid Search to find candidate events
+                    embed_response = bedrock_client.invoke_model(
+                        body=json.dumps({"inputText": event_title}),
+                        modelId="amazon.titan-embed-text-v1"
+                    )
+                    query_vector = json.loads(embed_response['body'].read())['embedding']
+                    logger.info(f"Generated embedding for event title: {event_title}")
+                    
+                    filters = [{"term": {"userId": self.user_id}}]
+                    if naive_start_datetime:
+                        start_datetime = datetime.fromisoformat(naive_start_datetime).replace(tzinfo=tz)
+                        filters.append({"term": {"startDate": start_datetime.isoformat()}})
+                        logger.info(f"Added startDate filter for search: {start_datetime.isoformat()}")
+                    
+                    search_body ={
+                        "size": 5,
+                        "track_total_hits": True,
+                        "query": {
+                            "bool": {
+                                "filter": filters,
+                                "should": [
+                                    {"match": {"title": {"query": event_title, "fuzziness": "AUTO"}}},
+                                    {"knn": {"title_vector": {"vector": query_vector, "k": 5}}},
+                                ],
+                                "minimum_should_match": 1,
+                            }
+                        }
+                    }
+                    opensearch_response = opensearch_client.search(
+                        index="calendar-events",
+                        body=search_body
+                    )
+                    hits = opensearch_response['hits']['hits']
+                    total_found = opensearch_response['hits']['total']['value']
+                    
+                    logger.info(f"OpenSearch returned {len(hits)} hits for event deletion search")
+                    for hit in hits:
+                        logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
+                    
+                    if total_found == 0:
+                        logger.info(f"No events found matching title '{event_title}' for deletion")
+                        return {"result": f"No matching events found for title '{event_title}'."}
+                    
+                    # handle ambiguity vs exact match
+                    target_doc = None
+                    if total_found == 1:
+                        # exact match
+                        target_doc = hits[0]
+                        logger.info(f"Single matching event found for deletion: {target_doc}")
+                    elif start_datetime:
+                        # filter by start date if provided
+                        for hit in hits:
+                            if hit['_source']['startDate'] == start_datetime.isoformat():
+                                target_doc = hit
+                                logger.info(f"Matching event found for deletion with start date: {target_doc}")
+                                break
+                        if not target_doc:
+                            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date {start_datetime.isoformat()}."}
+                    else:
+                        options = [f"on {hit['_source']['startDate']}" for hit in hits]
+                        return {
+                            "result": f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I delete?"
+                        }
+                    
+                    if target_doc:
+                        os_id = target_doc['_id']
+                        eventId = target_doc['_source']['eventId']
+                        opensearch_client.delete(index="calendar-events", id=os_id)
+                        ddb_client.delete_item(
+                            TableName='Events',
+                            Key={'userId': {'S': self.user_id}, 'id': {'S': eventId}}
+                        )
+                        return {"result": f"Successfully deleted the event '{event_title}'."}
+                    else:
+                        return {"result": "No matching event found to delete."}
+                except Exception as e:
+                    logger.error(f"Error during event deletion: {e}", exc_info=True)
+                    return {"result": "Sorry, I couldn't process that delete request."}
 
             if not result:
                 result = "no result found"
