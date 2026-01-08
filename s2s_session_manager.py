@@ -15,6 +15,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
+from repeating_event_config_model import RepeatingEventConfig
+import utils
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -466,12 +468,9 @@ class S2sSessionManager:
                     )
                     query_vector = json.loads(embed_response['body'].read())['embedding']
                     logger.info(f"Generated embedding for event title: {event_title}")
-                    
                     filters = [{"term": {"userId": self.user_id}}]
                     if naive_start_datetime:
                         start_datetime = datetime.fromisoformat(naive_start_datetime).replace(tzinfo=tz)
-                        filters.append({"term": {"startDate": start_datetime.isoformat()}})
-                        logger.info(f"Added startDate filter for search: {start_datetime.isoformat()}")
                     
                     search_body ={
                         "size": 5,
@@ -487,6 +486,35 @@ class S2sSessionManager:
                             }
                         }
                     }
+                    opensearch_habits_response = opensearch_client.search(
+                        index="habits",
+                        body=search_body
+                    )
+                    matching_habit_names_found = opensearch_habits_response['hits']['total']['value']
+                    habit_hits = opensearch_habits_response['hits']['hits']
+                    if matching_habit_names_found > 0:
+                        logger.info(f"Found {matching_habit_names_found} matching habits with title '{event_title}'")
+                        if start_datetime:
+                            matches = []
+                            for habit_hit in habit_hits:
+                                cfg = RepeatingEventConfig.model_validate(habit_hit['_source'])
+                                if utils.isRepeatingOnDay(cfg, start_datetime.date()):
+                                    new_tz = ZoneInfo(cfg.startTime.timezone)
+                                    d = start_datetime.date()
+                                    new_dt = datetime(d.year, d.month, d.day, cfg.startTime.hour, cfg.startTime.minute, tzinfo=new_tz)
+                                    if new_dt == start_datetime:
+                                        matches.append(habit_hit)
+                            if len(matches) == 1:
+                                return {"result": f"Do you want to delete only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')}? Or do you want to delete this event and all future occurrences? Or all occurrences?"}
+                            elif len(matches) > 1:
+                                return {"result": f"Unable to delete because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date and time."}
+                        else:
+                            return {"result": f"Cannot delete event '{event_title}' without a start date and time because it is a recurring event. Please provide the start date and time to identify the specific occurrence to delete."}
+    
+                    if naive_start_datetime:
+                        filters.append({"term": {"startDate": start_datetime.isoformat()}})
+                        logger.info(f"Added startDate filter for search: {start_datetime.isoformat()}")
+                    search_body["query"]["bool"]["filter"] = filters
                     opensearch_response = opensearch_client.search(
                         index="calendar-events",
                         body=search_body
@@ -526,6 +554,9 @@ class S2sSessionManager:
                     if target_doc:
                         os_id = target_doc['_id']
                         eventId = target_doc['_source']['eventId']
+                        habitId = target_doc['_source'].get('habitId', None)
+                        if habitId:
+                            return {"result": f"Do you want to delete only the occurrence on {target_doc['_source']['startDate']}? Or do you want to delete this event and all future occurrences? Or all occurrences?"}
                         opensearch_client.delete(index="calendar-events", id=os_id)
                         ddb_client.delete_item(
                             TableName='Events',

@@ -3,8 +3,24 @@ import re
 from datetime import date
 from typing import List, Optional, Sequence
 from pydantic import BaseModel, Field, field_validator
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 FREQ_RE = re.compile(r"^\d+(D|W|M(\d+)?|Y)$")
+
+class StartTime(BaseModel):
+  hour: int = Field(..., ge=0, le=23)
+  minute: int = Field(..., ge=0, le=59)
+  timezone: str
+
+  @field_validator("timezone")
+  @classmethod
+  def validate_timezone(cls, v: str) -> str:
+      # Validate IANA tz database names like "America/New_York"
+      try:
+          ZoneInfo(v)
+      except ZoneInfoNotFoundError as e:
+          raise ValueError(f"Invalid timezone: {v}") from e
+      return v
 
 class RepeatingEventConfig(BaseModel):
   creationDate: date
@@ -18,6 +34,8 @@ class RepeatingEventConfig(BaseModel):
   )
   exceptionDates: Optional[List[date]] = None
   stopDate: Optional[date] = None
+  startTime: StartTime
+  length: int = Field(..., gt=0, description="Event length in minutes")
   
   @field_validator("frequency")
   @classmethod
