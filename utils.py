@@ -1,5 +1,8 @@
 from repeating_event_config_model import RepeatingEventConfig
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
+from uuid import UUID
 
 def get_complete_weeks_between_dates(d1: date, d2: date) -> int:
     return abs((d1 - d2).days) // 7
@@ -84,3 +87,45 @@ def isRepeatingOnDay(repeating_event_config: RepeatingEventConfig, target_date: 
       and not_on_or_after_stop_date
       and on_or_after_creation_date
   )
+  
+  
+  
+def _to_dynamodb_compatible(value):
+    """
+    Recursively convert common non-DynamoDB-native Python types to
+    DynamoDB-friendly primitives for boto3.dynamodb.types.TypeSerializer.
+
+    Fixes: TypeError: Unsupported type "<class 'datetime.date'>"
+    """
+    if value is None:
+        return None
+
+    # bool is a subclass of int; handle before numeric checks
+    if isinstance(value, bool):
+        return value
+
+    # Dates/times -> ISO string
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+
+    # DynamoDB does not support float; prefer Decimal
+    if isinstance(value, float):
+        return Decimal(str(value))
+
+    # Common "stringable" types
+    if isinstance(value, (UUID, Enum)):
+        return str(value)
+
+    # Recurse containers
+    if isinstance(value, dict):
+        return {str(k): _to_dynamodb_compatible(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_to_dynamodb_compatible(v) for v in value]
+
+    if isinstance(value, set):
+        # DynamoDB supports sets, but TypeSerializer requires set of uniform primitives.
+        # Converting to list is safest unless you specifically need DynamoDB sets.
+        return [_to_dynamodb_compatible(v) for v in value]
+
+    return value

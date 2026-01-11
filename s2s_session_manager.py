@@ -490,7 +490,9 @@ class S2sSessionManager:
                         index="habits",
                         body=search_body
                     )
+                    print(f"OpenSearch habits search response: {opensearch_habits_response}")
                     matching_habit_names_found = opensearch_habits_response['hits']['total']['value']
+                    print(f"Found {matching_habit_names_found} matching habits:")
                     habit_hits = opensearch_habits_response['hits']['hits']
                     if matching_habit_names_found > 0:
                         logger.info(f"Found {matching_habit_names_found} matching habits with title '{event_title}'")
@@ -505,7 +507,47 @@ class S2sSessionManager:
                                     if new_dt == start_datetime:
                                         matches.append(habit_hit)
                             if len(matches) == 1:
-                                return {"result": f"Do you want to delete only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')}? Or do you want to delete this event and all future occurrences? Or all occurrences?"}
+                                if event_details.get("this_event_only", False):
+                                    logger.info(f"Deleting only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
+                                    new_exception_dates = cfg.exceptionDates or []
+                                    new_exception_dates.append(start_datetime.date())
+                                    update_expression = "SET exceptionDates = :ed"
+                                    expression_attribute_values = {":ed": serializer.serialize(utils._to_dynamodb_compatible(new_exception_dates))}
+                                    ddb_client.update_item(
+                                        TableName='Habits',
+                                        Key={'userId': {'S': cfg.userId}, 'id': {'S': cfg.id}},
+                                        UpdateExpression=update_expression,
+                                        ExpressionAttributeValues=expression_attribute_values
+                                    )
+                                    opensearch_client.update(
+                                        index="habits",
+                                        id=matches[0]['_id'],
+                                        body={"doc": {"exceptionDates": [d.isoformat() for d in new_exception_dates]}},
+                                        refresh=True
+                                    )
+                                    logger.info(f"Deleted only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
+                                    return {"result": f"Successfully deleted only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['name']}'."}
+                                elif event_details.get("this_and_future_events", False):
+                                    logger.info(f"Deleting this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
+                                    new_stop_date = start_datetime.date()
+                                    update_expression = "SET stopDate = :sd"
+                                    expression_attribute_values = {":sd": serializer.serialize(utils._to_dynamodb_compatible(new_stop_date))}
+                                    ddb_client.update_item(
+                                        TableName='Habits',
+                                        Key={'userId': {'S': cfg.userId}, 'id': {'S': cfg.id}},
+                                        UpdateExpression=update_expression,
+                                        ExpressionAttributeValues=expression_attribute_values
+                                    )
+                                    opensearch_client.update(
+                                        index="habits",
+                                        id=matches[0]['_id'],
+                                        body={"doc": {"stopDate": new_stop_date.isoformat()}},
+                                        refresh=True
+                                    )
+                                    logger.info(f"Deleted this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
+                                    return {"result": f"Successfully deleted this and future occurrences from {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['name']}'."}
+                                else:
+                                    return {"result": f"Do you want to delete only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')}? Or do you want to delete this event and all future occurrences?"}
                             elif len(matches) > 1:
                                 return {"result": f"Unable to delete because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date and time."}
                         else:
@@ -556,7 +598,39 @@ class S2sSessionManager:
                         eventId = target_doc['_source']['eventId']
                         habitId = target_doc['_source'].get('habitId', None)
                         if habitId:
-                            return {"result": f"Do you want to delete only the occurrence on {target_doc['_source']['startDate']}? Or do you want to delete this event and all future occurrences? Or all occurrences?"}
+                            if event_details.get("this_event_only", False):
+                                opensearch_client.delete(index="calendar-events", id=os_id)
+                                ddb_client.delete_item(
+                                    TableName='Events',
+                                    Key={'userId': {'S': self.user_id}, 'id': {'S': eventId}}
+                                )
+                                return {"result": f"Successfully deleted only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
+                            elif event_details.get("this_and_future_events", False):
+                                new_stop_date = datetime.fromisoformat(target_doc['_source']['startDate']).date()
+                                # update the habit to set stopDate in DynamoDB and OpenSearch
+                                update_expression = "SET stopDate = :sd"
+                                expression_attribute_values = {":sd": serializer.serialize(utils._to_dynamodb_compatible(new_stop_date))}
+                                ddb_client.update_item(
+                                    TableName='Habits',
+                                    Key={'userId': {'S': self.user_id}, 'id': {'S': habitId}},
+                                    UpdateExpression=update_expression,
+                                    ExpressionAttributeValues=expression_attribute_values
+                                )
+                                opensearch_client.update(
+                                    index="habits",
+                                    id=habitId,
+                                    body={"doc": {"stopDate": new_stop_date.isoformat()}},
+                                    refresh=True
+                                )
+                                # delete the event occurrence
+                                opensearch_client.delete(index="calendar-events", id=os_id)
+                                ddb_client.delete_item(
+                                    TableName='Events',
+                                    Key={'userId': {'S': self.user_id}, 'id': {'S': eventId}}
+                                )
+                                return {"result": f"Successfully deleted this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
+                            else:
+                                return {"result": f"Do you want to delete only the occurrence on {target_doc['_source']['startDate']}? Or do you want to delete this event and all future occurrences?"}
                         opensearch_client.delete(index="calendar-events", id=os_id)
                         ddb_client.delete_item(
                             TableName='Events',

@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 from datetime import date
 from typing import List, Optional, Sequence
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, AliasChoices
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 FREQ_RE = re.compile(r"^\d+(D|W|M(\d+)?|Y)$")
@@ -23,6 +23,10 @@ class StartTime(BaseModel):
       return v
 
 class RepeatingEventConfig(BaseModel):
+  model_config = ConfigDict(populate_by_name=True)
+  id: str = Field(validation_alias=AliasChoices("habitId", "id"))
+  userId: str
+  name: str = Field(validation_alias=AliasChoices("title", "name"))
   creationDate: date
   frequency: str = Field(..., description="e.g. '1D', '2W', '1M', '1M3' (every month on 3rd occurence of a specific day), '1Y'")
   days: List[str] = Field(
@@ -41,6 +45,7 @@ class RepeatingEventConfig(BaseModel):
   @classmethod
   def validate_frequency(cls, v: str) -> str:
       if not FREQ_RE.match(v):
+          print(f"Invalid frequency format: {v}")
           raise ValueError("Invalid frequency format (expected like 1D, 2W, 1M, 1M3, 1Y)")
       return v
 
