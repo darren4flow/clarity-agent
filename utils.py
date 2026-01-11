@@ -129,3 +129,14 @@ def _to_dynamodb_compatible(value):
         return [_to_dynamodb_compatible(v) for v in value]
 
     return value
+  
+  
+  
+def time_unit_map(time_unit: str) -> str:
+    mapping = {
+      "daily": "D",
+      "weekly": "W",
+      "monthly": "M",
+      "yearly": "Y"
+    }
+    return mapping.get(time_unit, "D")

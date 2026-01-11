@@ -11,7 +11,7 @@ from aws_sdk_bedrock_runtime.config import Config
 from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
 import boto3
 from boto3.dynamodb.types import TypeSerializer
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -369,15 +369,15 @@ class S2sSessionManager:
                 event_details = json.loads(content)
                 event_title = event_details.get("title", None)
                 naive_start_datetime = event_details.get("start_datetime", None)
-                naive_end_datetime = event_details.get("end_datetime", None)
+                length_minutes = event_details.get("length_minutes", 15)
                 
                 missing_fields = []
                 if not event_title:
                   missing_fields.append("title")
                 if not naive_start_datetime:
                   missing_fields.append("start_datetime")
-                if not naive_end_datetime:
-                  missing_fields.append("end_datetime")
+                if not length_minutes:
+                  missing_fields.append("length_minutes")
 
                 if missing_fields:
                   return {
@@ -385,7 +385,7 @@ class S2sSessionManager:
                   }
                 
                 start_datetime = datetime.fromisoformat(naive_start_datetime).replace(tzinfo=tz)
-                end_datetime = datetime.fromisoformat(naive_end_datetime).replace(tzinfo=tz)
+                end_datetime = start_datetime + timedelta(minutes=length_minutes)
                 
                 notifications = []
                 for notification in event_details.get("notifications", []):
@@ -407,22 +407,18 @@ class S2sSessionManager:
                     "priority": event_details.get("priority", None),
                     "fixed": event_details.get("fixed", False),
                     "stopDate": event_details["recurrence"].get("stop_date", None),
-                    "frequency": event_details["recurrence"]["frequency"],
+                    "frequency": str(event_details["recurrence"]["frequency"]) + utils.time_unit_map(event_details["recurrence"]["time_unit"]),
                     "notifications": notifications,
                     "days": event_details["recurrence"]["days"],
                     "allDay": event_details.get("all_day", False),
-                    "exceptionDates": [datetime.now(tz).strftime('%Y-%m-%d')],
+                    "exceptionDates": [],
                     "prevVersionHabitId": None,
                     "startTime": {
                       "hour": start_datetime.hour,
                       "minute": start_datetime.minute,
                       "timezone": self.timezone
                     },
-                    "endTime": {
-                      "hour": end_datetime.hour,
-                      "minute": end_datetime.minute,
-                      "timezone": self.timezone
-                    },
+                    "length": event_details.get("length_minutes", 15),
                   }
                   ddb_habit_item= {k: serializer.serialize(v) for k, v in new_habit.items()}
                   ddb_client.put_item(TableName='Habits', Item=ddb_habit_item)
@@ -508,7 +504,7 @@ class S2sSessionManager:
                                         matches.append(habit_hit)
                             if len(matches) == 1:
                                 if event_details.get("this_event_only", False):
-                                    logger.info(f"Deleting only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
+                                    logger.info(f"Deleting only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
                                     new_exception_dates = cfg.exceptionDates or []
                                     new_exception_dates.append(start_datetime.date())
                                     update_expression = "SET exceptionDates = :ed"
@@ -525,10 +521,10 @@ class S2sSessionManager:
                                         body={"doc": {"exceptionDates": [d.isoformat() for d in new_exception_dates]}},
                                         refresh=True
                                     )
-                                    logger.info(f"Deleted only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
-                                    return {"result": f"Successfully deleted only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['name']}'."}
+                                    logger.info(f"Deleted only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
+                                    return {"result": f"Successfully deleted only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['title']}'."}
                                 elif event_details.get("this_and_future_events", False):
-                                    logger.info(f"Deleting this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
+                                    logger.info(f"Deleting this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
                                     new_stop_date = start_datetime.date()
                                     update_expression = "SET stopDate = :sd"
                                     expression_attribute_values = {":sd": serializer.serialize(utils._to_dynamodb_compatible(new_stop_date))}
@@ -544,8 +540,8 @@ class S2sSessionManager:
                                         body={"doc": {"stopDate": new_stop_date.isoformat()}},
                                         refresh=True
                                     )
-                                    logger.info(f"Deleted this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['name']}'")
-                                    return {"result": f"Successfully deleted this and future occurrences from {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['name']}'."}
+                                    logger.info(f"Deleted this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
+                                    return {"result": f"Successfully deleted this and future occurrences from {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['title']}'."}
                                 else:
                                     return {"result": f"Do you want to delete only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')}? Or do you want to delete this event and all future occurrences?"}
                             elif len(matches) > 1:
