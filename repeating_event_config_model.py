@@ -22,7 +22,7 @@ class StartTime(BaseModel):
           raise ValueError(f"Invalid timezone: {v}") from e
       return v
 
-class RepeatingEventConfig(BaseModel):
+class HabitIndexModel(BaseModel):
   model_config = ConfigDict(populate_by_name=True)
   id: str = Field(validation_alias=AliasChoices("habitId", "id"))
   userId: str
@@ -45,7 +45,6 @@ class RepeatingEventConfig(BaseModel):
   @classmethod
   def validate_frequency(cls, v: str) -> str:
       if not FREQ_RE.match(v):
-          print(f"Invalid frequency format: {v}")
           raise ValueError("Invalid frequency format (expected like 1D, 2W, 1M, 1M3, 1Y)")
       return v
 
@@ -55,3 +54,13 @@ class RepeatingEventConfig(BaseModel):
       # Ensures even numeric inputs become strings ("15" not 15)
       return [str(x) for x in v]
     
+    
+class RepeatingEventConfigModel(HabitIndexModel):
+    model_config = ConfigDict(populate_by_name=True)
+    allDay: bool = False
+    content: Optional[dict] = None
+    fixed: bool = False
+    notifications: Optional[List[dict]] = Field(default_factory=list)
+    prevVersionHabitId: Optional[str] = None
+    priority: Optional[str] = None
+    eventType: Optional[str] = Field(default="personal", validation_alias=AliasChoices("type", "eventType"))

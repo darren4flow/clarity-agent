@@ -1,5 +1,6 @@
-from repeating_event_config_model import RepeatingEventConfig
-from datetime import date, datetime
+from repeating_event_config_model import HabitIndexModel
+from datetime import date, datetime, timedelta
+from typing import Optional
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
@@ -25,7 +26,7 @@ def months_between(d1: date, d2: date) -> int:
     # More correct than the JS version: includes year difference
     return abs((d2.year - d1.year) * 12 + (d2.month - d1.month))
   
-def isRepeatingOnDay(repeating_event_config: RepeatingEventConfig, target_date: date) -> bool:
+def isRepeatingOnDay(repeating_event_config: HabitIndexModel, target_date: date) -> bool:
   creation_date = repeating_event_config.creationDate
   frequency = repeating_event_config.frequency
   
@@ -140,3 +141,29 @@ def time_unit_map(time_unit: str) -> str:
       "yearly": "Y"
     }
     return mapping.get(time_unit, "D")
+
+
+def get_new_end_datetime(
+    current_length: int,
+    new_length_minutes: Optional[int],
+    new_end_datetime_str: Optional[str],
+    current_start_datetime: Optional[datetime],
+    new_start_datetime: Optional[datetime],
+) -> Optional[datetime]:
+    if new_end_datetime_str is not None:
+        try:
+            return datetime.fromisoformat(new_end_datetime_str)
+        except ValueError:
+            raise ValueError(f"invalid ISO datetime: {new_end_datetime_str}")
+
+    if new_length_minutes is not None:
+        if new_length_minutes < 0:
+            raise ValueError("new_length_minutes must be >= 0")
+        start = new_start_datetime or current_start_datetime
+        return (start + timedelta(minutes=new_length_minutes)) if start is not None else None
+
+    # current_length is required (int) — allow 0
+    if current_length < 0:
+        raise ValueError("current_length must be >= 0")
+    start = new_start_datetime or current_start_datetime
+    return (start + timedelta(minutes=current_length)) if start is not None else None
