@@ -774,7 +774,11 @@ class S2sSessionManager:
                                     ddb_event_item= {k: serializer.serialize(v) for k, v in new_event.items()}
                                     ddb_client.put_item(TableName='Events', Item=ddb_event_item)
                                     logger.info(f"Updated single event occurrence in DynamoDB: {new_event}")   
-                                    return {"result": f"Successfully updated only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['title']}'."}
+                                    return {
+                                        "result": f"Successfully updated only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')} for recurring event '{matches[0]['_source']['title']}'.",
+                                        "new_event": new_event,
+                                        "new_exception_dates": new_exception_dates
+                                    }
                                 elif event_details.get("this_and_future_events", False):
                                     logger.info(f"Updating this and future occurrences from {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
                                     new_stop_date = start_datetime.date()
