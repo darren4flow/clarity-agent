@@ -806,7 +806,6 @@ class S2sSessionManager:
                                     #     refresh=True
                                     # )
                                     logger.info(f"Set the stop date of the current repeating event config to {new_stop_date}")
-                                    #TODO Create a new repeating event config from start_datetime with the new details
                                     new_repeat_config = {
                                         "id": str(uuid.uuid4()),
                                         "userId": cfg.userId,
@@ -848,7 +847,9 @@ class S2sSessionManager:
                                 logger.info(f"No matching occurrences found on {start_datetime} for recurring event '{event_title}'. This is probably due to exception dates.")
                         else:
                             return {"result": f"Cannot update event '{event_title}' without a start date and time because it is a recurring event. Please provide the start date and time to identify the specific occurrence to update."}
-    
+                    else:
+                        logger.info("No matching habits that will autogenerate the event found on the specified date is found. Checking saved events now.")
+                    
                     if start_datetime:
                         filters.append({"term": {"startDate": start_datetime.isoformat()}})
                         logger.info(f"Added startDate filter for search: {start_datetime.isoformat()}")
@@ -889,19 +890,52 @@ class S2sSessionManager:
                             "result": f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I update?"
                         }
                     
+                    # Found the saved event to update
                     if target_doc:
                         os_id = target_doc['_id']
                         eventId = target_doc['_source']['eventId']
                         habitId = target_doc['_source'].get('habitId', None)
                         if habitId:
                             if event_details.get("this_event_only", False):
-                                #TODO Update only this occurrence with the new details
-                                opensearch_client.delete(index="calendar-events", id=os_id)
-                                ddb_client.delete_item(
+                                # get the event data from DynamoDB
+                                ddb_event_item = ddb_client.get_item(
                                     TableName='Events',
                                     Key={'userId': {'S': self.user_id}, 'id': {'S': eventId}}
                                 )
-                                return {"result": f"Successfully updated only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
+                                if not ddb_event_item.get('Item'):
+                                    return {"result": f"Could not find the event in the database for title '{event_title}'."}
+                                event_item = {k: deserializer.deserialize(v) for k, v in ddb_event_item['Item'].items()}
+                                current_start_datetime = datetime.fromisoformat(event_item['startDate']).replace(tzinfo=tz)
+                                current_length = int((datetime.fromisoformat(event_item['endDate']) - start_datetime).total_seconds() / 60)
+                                
+                                new_end_datetime = utils.get_new_end_datetime(
+                                    current_length,
+                                    to_update_fields.get('new_length_minutes', None),
+                                    to_update_fields.get('new_end_datetime', None),
+                                    current_start_datetime,
+                                    new_start_datetime
+                                )
+                                if new_end_datetime is None:
+                                    return {"result": "Unable to determine new end datetime for the updated event occurrence."}
+                                updated_fields = {
+                                        "done": to_update_fields.get("done", event_item.get("done", False)),
+                                        "description": to_update_fields.get("new_title", event_item["description"]),
+                                        "allDay": to_update_fields.get("allDay", event_item.get("allDay", False)),
+                                        "type": to_update_fields.get("type", event_item.get("type", "personal")),
+                                        "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
+                                        "priority": to_update_fields.get("priority", event_item.get("priority", None)),
+                                        "content": to_update_fields.get("content", event_item.get("content", None)),
+                                        "startDate": new_start_datetime.isoformat() if new_start_datetime else current_start_datetime.isoformat(),
+                                        "endDate": new_end_datetime.isoformat(),
+                                        "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
+                                }
+                                updated_event = {**event_item, **updated_fields}
+                                # save to DynamoDB
+                                ddb_event_item= {k: serializer.serialize(v) for k, v in updated_event.items()}
+                                ddb_client.put_item(TableName='Events', Item=ddb_event_item)
+                                logger.info(f"Updated single event occurrence in DynamoDB: {updated_event}")
+                                return {"result": f"Successfully updated only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'.",
+                                        "updated_event": updated_event}
                             elif event_details.get("this_and_future_events", False):
                                 new_stop_date = datetime.fromisoformat(target_doc['_source']['startDate']).date()
                                 # update the habit to set stopDate in DynamoDB and OpenSearch

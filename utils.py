@@ -147,7 +147,7 @@ def get_new_end_datetime(
     current_length: int,
     new_length_minutes: Optional[int],
     new_end_datetime_str: Optional[str],
-    current_start_datetime: Optional[datetime],
+    current_start_datetime: datetime,
     new_start_datetime: Optional[datetime],
 ) -> Optional[datetime]:
     if new_end_datetime_str is not None:
