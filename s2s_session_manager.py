@@ -366,7 +366,6 @@ class S2sSessionManager:
                 )
             
             if toolName == "create_event":
-                # Simulate event creation
                 event_details = json.loads(content)
                 event_title = event_details.get("title", None)
                 naive_start_datetime = event_details.get("start_datetime", None)
@@ -937,30 +936,108 @@ class S2sSessionManager:
                                 return {"result": f"Successfully updated only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'.",
                                         "updated_event": updated_event}
                             elif event_details.get("this_and_future_events", False):
+                                # get the event from ddb
+                                ddb_event_item = ddb_client.get_item(
+                                    TableName='Events',
+                                    Key={'userId': {'S': self.user_id}, 'id': {'S': eventId}}
+                                )
+                                if not ddb_event_item.get('Item'):
+                                    return {"result": f"Could not find the event in the database for title '{event_title}'."}
+                                
+                                # get the repeat config data from DynamoDB
+                                ddb_config_item = ddb_client.get_item(
+                                    TableName='Habits',
+                                    Key={'userId': {'S': self.user_id}, 'id': {'S': habitId}}
+                                )
+                                if not ddb_config_item.get('Item'):
+                                    return {"result": f"Could not find the recurring event config in the database for title '{event_title}'."}
+                                
+                                # Update the current repeat config to set stopDate
+                                config_item = {k: deserializer.deserialize(v) for k, v in ddb_config_item['Item'].items()}
+                                logger.info(f"Fetched recurring event config from DynamoDB: {config_item}")
+                                cfg = RepeatingEventConfigModel.model_validate(config_item)
                                 new_stop_date = datetime.fromisoformat(target_doc['_source']['startDate']).date()
-                                # update the habit to set stopDate in DynamoDB and OpenSearch
+                                cfg.stopDate = new_stop_date
+                                # used for unit test
+                                updated_repeat_config = {k: serializer.serialize(utils._to_dynamodb_compatible(v))
+                                                            for k, v in cfg.model_dump().items()
+                                                        }
+                                updated_repeat_config['type'] = updated_repeat_config.pop('eventType')
+                                # update the current config to set stopDate in DynamoDB (and OpenSearch)
                                 update_expression = "SET stopDate = :sd"
                                 expression_attribute_values = {":sd": serializer.serialize(utils._to_dynamodb_compatible(new_stop_date))}
                                 ddb_client.update_item(
                                     TableName='Habits',
-                                    Key={'userId': {'S': self.user_id}, 'id': {'S': habitId}},
+                                    Key={'userId': {'S': self.user_id}, 'id': {'S': cfg.id}},
                                     UpdateExpression=update_expression,
                                     ExpressionAttributeValues=expression_attribute_values
                                 )
-                                opensearch_client.update(
-                                    index="habits",
-                                    id=habitId,
-                                    body={"doc": {"stopDate": new_stop_date.isoformat()}},
-                                    refresh=True
+
+                                # create the new repeat config
+                                new_repeat_config = {
+                                        "id": str(uuid.uuid4()),
+                                        "userId": cfg.userId,
+                                        "name": to_update_fields.get("new_title", cfg.name),
+                                        "content": to_update_fields.get("content", cfg.content),
+                                        "creationDate": start_datetime.date().strftime('%Y-%m-%d'), # YYYY-MM-DD in user's timezone
+                                        "type": to_update_fields.get("type", cfg.eventType),
+                                        "priority": to_update_fields.get("priority", cfg.priority),
+                                        "fixed": to_update_fields.get("fixed", cfg.fixed),
+                                        "stopDate": None,
+                                        "frequency": to_update_fields.get("frequency", cfg.frequency),
+                                        "notifications": to_update_fields.get("notifications", cfg.notifications),
+                                        "days": to_update_fields.get("days", cfg.days),
+                                        "allDay": to_update_fields.get("allDay", cfg.allDay),
+                                        "exceptionDates": cfg.exceptionDates or [],
+                                        "prevVersionHabitId": cfg.id,
+                                        "startTime": {
+                                          "hour": new_start_datetime.hour if new_start_datetime else cfg.startTime.hour,
+                                          "minute": new_start_datetime.minute if new_start_datetime else cfg.startTime.minute,
+                                          "timezone": self.timezone
+                                        },
+                                        "length": to_update_fields.get("new_length_minutes", cfg.length),
+                                }
+                               # save new repeat config to DynamoDB
+                                new_ddb_config_item= {k: serializer.serialize(v) for k, v in new_repeat_config.items()}
+                                ddb_client.put_item(TableName='Habits', Item=new_ddb_config_item)
+                                logger.info(f"Created new repeating event config in DynamoDB: {new_repeat_config}")
+                                
+                                # Now update the event occurrence
+                                event_item = {k: deserializer.deserialize(v) for k, v in ddb_event_item['Item'].items()}
+                                current_start_datetime = datetime.fromisoformat(event_item['startDate']).replace(tzinfo=tz)
+                                current_length = int((datetime.fromisoformat(event_item['endDate']) - start_datetime).total_seconds() / 60)
+                                new_end_datetime = utils.get_new_end_datetime(
+                                    current_length,
+                                    to_update_fields.get('new_length_minutes', None),
+                                    to_update_fields.get('new_end_datetime', None),
+                                    current_start_datetime,
+                                    new_start_datetime
                                 )
-                                # delete the event occurrence
-                                opensearch_client.delete(index="calendar-events", id=os_id)
-                                ddb_client.delete_item(
-                                    TableName='Events',
-                                    Key={'userId': {'S': self.user_id}, 'id': {'S': eventId}}
-                                )
-                                #TODO: Create a new repeating event config from start_datetime with the new details
-                                return {"result": f"Successfully updated this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
+                                if new_end_datetime is None:
+                                    return {"result": "Unable to determine new end datetime for the updated event occurrence."}
+                                updated_fields = {
+                                        "done": to_update_fields.get("done", event_item.get("done", False)),
+                                        "description": to_update_fields.get("new_title", event_item["description"]),
+                                        "allDay": to_update_fields.get("allDay", event_item.get("allDay", False)),
+                                        "type": to_update_fields.get("type", event_item.get("type", "personal")),
+                                        "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
+                                        "priority": to_update_fields.get("priority", event_item.get("priority", None)),
+                                        "content": to_update_fields.get("content", event_item.get("content", None)),
+                                        "startDate": new_start_datetime.isoformat() if new_start_datetime else current_start_datetime.isoformat(),
+                                        "endDate": new_end_datetime.isoformat(),
+                                        "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
+                                }
+                                updated_event = {**event_item, **updated_fields}
+                                # save to DynamoDB
+                                ddb_event_item= {k: serializer.serialize(v) for k, v in updated_event.items()}
+                                ddb_client.put_item(TableName='Events', Item=ddb_event_item)
+                                logger.info(f"Updated single event occurrence in DynamoDB: {updated_event}")
+                                
+                                return {"result": f"Successfully updated this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'.",
+                                        "updated_repeat_config": updated_repeat_config,
+                                        "new_repeat_config": new_repeat_config,
+                                        "updated_event": updated_event
+                                        }
                             else:
                                 return {"result": f"Do you want to update only the occurrence on {target_doc['_source']['startDate']}? Or do you want to update this event and all future occurrences?"}
                         

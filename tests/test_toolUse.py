@@ -327,7 +327,7 @@ async def test_update_repeating_saved_event_this_event_only(monkeypatch):
     mock_os.search.side_effect = [habits_resp, events_resp]
     monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
 
-    # prepare cfg returned by HabitIndexModel.model_validate / RepeatingEventConfigModel.model_validate
+
     ddb_event_data = event_data.copy()
     ddb_event_data['id'] = ddb_event_data.pop('eventId')
     ddb_event_data['description'] = ddb_event_data.pop('title')
@@ -369,7 +369,167 @@ async def test_update_repeating_saved_event_this_event_only(monkeypatch):
   
 @pytest.mark.asyncio
 async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
-    pass  # TODO: implement this test similar to the non-saved version above  
+    """
+    So this repeat event config has an exception date on the specified date.
+    We'll set a stop date equal to the specified date
+    We'll update the existing event
+    We'll create a new repeat event config
+    """
+    """
+    We have a recurring event. We want to update the current repeat event config to have a new stopDate.
+    We want to create a new repeating event config starting from the specified occurrence date with the updated details.
+    """
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+
+    # call processToolUse for update_event with this_event_only = true
+    payload = {
+        "current_title": "Test Habit",
+        "current_start_datetime": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00",
+        "this_and_future_events": True,
+        "new_title": "Updated Title",
+        "new_length_minutes": 60,
+        "fixed": True,
+        "priority": "critical"
+    }
+    
+    # mock Bedrock embed response
+    embed_body = Mock()
+    embed_body.read = Mock(return_value=json.dumps({"embedding": [0.1, 0.2]}).encode("utf-8"))
+    monkeypatch.setattr(s2s_session_manager, "bedrock_client", Mock(invoke_model=Mock(return_value={"body": embed_body})))
+
+    # mock OpenSearch habits search (one habit hit)
+    # It has an exception date
+    habit_hit = {
+        "_id": "hid",
+        "_score": 1,
+        "_source": {
+            "userId": "test-user",
+            "habitId": "hid",
+            "title": "Test Habit",
+            "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+            "stopDate": None,
+            "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+            "frequency": "1D",
+            "days": [],
+            "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],
+            "length": 15
+        }
+    }
+    habits_resp = {"hits": {"total": {"value": 1}, "hits": [habit_hit]}}
+    event_data = {
+        "eventId": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "title": "Test Habit",
+        "done": False,
+        "allDay": False,
+        "type": "personal",
+        "fixed": False,
+        "content": None,
+        "notifications": [],
+        "priority": None
+    }
+    events_hit = {
+        "_id": "eid",
+        "_source": event_data,
+        "_score": 1
+    }
+    events_resp = {"hits": {"total": {"value": 1}, "hits": [events_hit]}}
+    mock_os = Mock()
+    mock_os.search.side_effect = [habits_resp, events_resp]
+    monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+    
+    ddb_event_data = event_data.copy()
+    ddb_event_data['id'] = ddb_event_data.pop('eventId')
+    ddb_event_data['description'] = ddb_event_data.pop('title')
+    
+    
+    habit_data = {
+        "userId": "test-user",
+        "id": "hid",
+        "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+        "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],
+        "length": 15,
+        "allDay": False,
+        "type": "personal", 
+        "fixed": False,
+        "priority": None,
+        "content": None,
+        "notifications": [],
+        "name": "Test Habit",
+        "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+        "frequency": "1D",
+        "days": [],
+        "stopDate": None,
+        "prevVersionHabitId": None
+    }
+
+    # mock DynamoDB + serializer/deserializer
+    mock_ddb = Mock()
+    mock_ddb.get_item = Mock(side_effect=[{"Item": ddb_event_data}, {"Item": habit_data}])
+    mock_ddb.update_item = Mock()
+    mock_ddb.put_item = Mock()
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+
+    res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+    
+    assert isinstance(res, dict)
+    assert "Successfully updated this and future occurrences " in res["result"]
+    assert mock_ddb.update_item.called
+    assert mock_ddb.put_item.called
+    
+    
+    # Ensure that the old repeat config has a stop date set
+    actual_updated_cfg = res["updated_repeat_config"]
+    expected_updated_cfg = habit_data.copy()
+    expected_updated_cfg["stopDate"] = datetime.now(ZoneInfo("UTC")).date().isoformat()
+    assert actual_updated_cfg == expected_updated_cfg
+    
+    
+    # Ensure that the new repeat config has the updated details
+    actual_new_cfg = res["new_repeat_config"]
+    del actual_new_cfg["id"]
+    expected_new_cfg = {
+      "userId": "test-user",
+      "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+      "exceptionDates": [datetime.now(ZoneInfo("UTC")).date()],
+      "length": payload["new_length_minutes"],
+      "allDay": False,
+      "type": "personal", 
+      "fixed": payload["fixed"],
+      "priority": payload["priority"],
+      "content": None,
+      "notifications": [],
+      "name": payload["new_title"],
+      "creationDate": (datetime.now(ZoneInfo("UTC")).date()).isoformat(),
+      "frequency": "1D",
+      "days": [],
+      "stopDate": None,
+      "prevVersionHabitId": "hid"
+    }
+    assert actual_new_cfg == expected_new_cfg
+    
+    updated_new_event = res["updated_event"]
+    del updated_new_event["id"]
+    expected_updated_event = {
+      "userId": "test-user",
+      "done": False,
+      "description": payload["new_title"],
+      "habitId": "hid",
+      "allDay": False,
+      "type": "personal",
+      "fixed": payload["fixed"],
+      "priority": payload["priority"],
+      "content": None,
+      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+      "notifications": []
+    }
+    assert updated_new_event == expected_updated_event
   
 @pytest.mark.asyncio
 async def test_update_nonrepeating_event(monkeypatch):
