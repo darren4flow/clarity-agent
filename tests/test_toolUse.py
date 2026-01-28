@@ -533,7 +533,88 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
   
 @pytest.mark.asyncio
 async def test_update_nonrepeating_event(monkeypatch):
-    pass  # TODO: implement this test similar to the repeating event versions above
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+    
+    payload = {
+        "current_title": "Test Event",
+        "current_start_datetime": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00",
+        "new_title": "Updated Title",
+        "new_length_minutes": 60,
+        "fixed": True,
+        "priority": "critical",
+        "done": True,
+        "type": "work"
+    }
+    
+    # mock Bedrock embed response
+    embed_body = Mock()
+    embed_body.read = Mock(return_value=json.dumps({"embedding": [0.1, 0.2]}).encode("utf-8"))
+    monkeypatch.setattr(s2s_session_manager, "bedrock_client", Mock(invoke_model=Mock(return_value={"body": embed_body})))
+    
+    habits_resp = {"hits": {"total": {"value": 0}, "hits": []}}
+    event_data = {
+        "eventId": "eid",
+        "userId": "test-user",
+        "habitId": None,
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "title": "Test Event",
+        "done": False,
+        "allDay": False,
+        "type": "personal",
+        "fixed": False,
+        "content": None,
+        "notifications": [],
+        "priority": None
+    }
+    events_hit = {
+        "_id": "eid",
+        "_source": event_data,
+        "_score": 1
+    }
+    events_resp = {"hits": {"total": {"value": 1}, "hits": [events_hit]}}
+    mock_os = Mock()
+    mock_os.search.side_effect = [habits_resp, events_resp]
+    monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+    
+    ddb_event_data = event_data.copy()
+    ddb_event_data['id'] = ddb_event_data.pop('eventId')
+    ddb_event_data['description'] = ddb_event_data.pop('title')
+    
+    # mock DynamoDB + serializer/deserializer
+    mock_ddb = Mock()
+    mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
+    mock_ddb.put_item = Mock()
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    
+   # call processToolUse for update_event with this_event_only = true
+    res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+    
+    assert isinstance(res, dict)
+    assert "Successfully updated the event " in res["result"]
+    assert mock_ddb.get_item.called
+    assert mock_ddb.put_item.called
+
+    # Ensure that the old repeat config has a stop date set
+    actual_updated_event = res["updated_event"]
+    expected_updated_event = {
+        "id": "eid",
+        "userId": "test-user",
+        "habitId": None,
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+        "description": payload["new_title"],
+        "done": payload["done"],
+        "allDay": False,
+        "type": payload["type"],
+        "fixed": payload["fixed"],
+        "content": None,
+        "notifications": [],
+        "priority": payload["priority"]
+    }
+    assert actual_updated_event == expected_updated_event
 
 @pytest.mark.asyncio
 def test_update_all_day_repeating_unsaved_event_this_and_future_events(monkeypatch):
