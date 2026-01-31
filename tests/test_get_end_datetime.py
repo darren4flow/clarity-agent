@@ -559,12 +559,11 @@ def test_changing_startDate_endDate():
   assert res == expected_end_datetime
 
 
-#TODO this is a weird case
 def test_changing_startDate_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
   current_length = 30  # in minutes
-  new_start_date = (current_start_datetime + timedelta(days=2)).date()
+  new_start_date = (current_start_datetime + timedelta(days=1)).date()
   new_end_time_str = "15:00"
 
   res = get_new_end_datetime(
@@ -584,29 +583,24 @@ def test_changing_startDate_endTime():
   assert res == expected_end_datetime
 
 
-#TODO: this is a weird case as well.
 def test_changing_startTime_endDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
   current_length = 30  # in minutes
   new_start_time_str = "15:00"
-  new_end_date = (current_start_datetime + timedelta(days=2)).date()
+  new_end_date = (current_start_datetime + timedelta(days=1)).date()
 
-  res = get_new_end_datetime(
-    current_length, 
-    current_start_datetime, 
-    current_end_datetime, 
-    new_end_date=new_end_date, 
-    new_start_time_str=new_start_time_str
-  )
-  # expected_end_datetime = current_end_datetime.replace(
-  #   year=new_start_date.year,
-  #   month=new_start_date.month,
-  #   day=new_start_date.day,
-  #   hour=15,
-  #   minute=0
-  # )
-  assert False
+  with pytest.raises(Exception) as excinfo:
+    get_new_end_datetime(
+      current_length, 
+      current_start_datetime, 
+      current_end_datetime, 
+      new_start_time_str=new_start_time_str, 
+      new_end_date=new_end_date,
+    )
+
+  error_msg = "The new start time and new end date were provided without a new end time."
+  assert error_msg == str(excinfo.value)
 
 def test_changing_startTime_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -676,10 +670,27 @@ def test_changing_startDate_startTime_length():
   )
   assert res == expected_end_datetime
 
-#TODO
-def test_changing_startDate_endDate_length():
-  pass
 
+def test_changing_startDate_endDate_length():
+  current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+  current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
+  current_length = 30  # in minutes
+  new_start_date = (current_start_datetime + timedelta(days=1)).date()
+  new_end_date = (current_start_datetime + timedelta(days=2)).date()
+  new_length_minutes = 60
+
+  with pytest.raises(Exception) as excinfo:
+    get_new_end_datetime(
+      current_length, 
+      current_start_datetime, 
+      current_end_datetime, 
+      new_start_date=new_start_date, 
+      new_end_date=new_end_date,
+      new_length_minutes=new_length_minutes
+    )
+
+  error_msg = "The new start date and new end date were provided with a new length"
+  assert error_msg in str(excinfo.value)
 
 
 def test_changing_startDate_endTime_length():
@@ -707,16 +718,26 @@ def test_changing_startDate_endTime_length():
   )
   assert res == expected_end_datetime
 
-#TODO
 def test_changing_startTime_endDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
   current_length = 30  # in minutes
-  new_end_date = (current_start_datetime + timedelta(days=1)).date()
   new_start_time_str = "16:00"
+  new_end_date = (current_start_datetime + timedelta(days=1)).date()
   new_length_minutes = 60
 
-  assert False
+  with pytest.raises(Exception) as excinfo:
+    get_new_end_datetime(
+      current_length, 
+      current_start_datetime, 
+      current_end_datetime, 
+      new_start_time_str=new_start_time_str, 
+      new_end_date=new_end_date,
+      new_length_minutes=new_length_minutes
+    )
+
+  error_msg = "The new start time and new end date were provided without a new end time."
+  assert error_msg == str(excinfo.value)
 
 def test_changing_startTime_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -765,16 +786,26 @@ def test_changing_endDate_endTime_length():
   )
   assert res == expected_end_datetime
 
-#TODO
 def test_changing_startDate_startTime_endDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
   current_length = 30  # in minutes
   new_start_date = (current_start_datetime + timedelta(days=1)).date()
   new_start_time_str = "16:00"
-  new_length_minutes = 999
+  new_end_date = (current_end_datetime + timedelta(days=2)).date()
+  
+  with pytest.raises(Exception) as excinfo:
+    get_new_end_datetime(
+      current_length, 
+      current_start_datetime, 
+      current_end_datetime, 
+      new_start_time_str=new_start_time_str, 
+      new_start_date=new_start_date,
+      new_end_date=new_end_date
+    )
 
-  assert False
+  error_msg = """The new start date, startTime, and endDate were provided. The endDate needs an endTime to make sense. Or use a new length without an end date."""
+  assert error_msg == str(excinfo.value)
 
 def test_changing_startDate_startTime_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -851,7 +882,6 @@ def test_changing_startTime_endDate_endTime():
   )
   assert res == expected_end_datetime
 
-#TODO
 def test_changing_startDate_startTime_endDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -859,9 +889,20 @@ def test_changing_startDate_startTime_endDate_length():
   new_start_date = (current_start_datetime + timedelta(days=1)).date()
   new_start_time_str = "15:00"
   new_end_date = (current_start_datetime + timedelta(days=2)).date()
+  new_length_minutes = 999
+  
+  with pytest.raises(Exception) as excinfo:
+    get_new_end_datetime(
+      current_length, 
+      current_start_datetime, 
+      current_end_datetime, 
+      new_start_time_str=new_start_time_str, 
+      new_start_date=new_start_date,
+      new_end_date=new_end_date,
+      new_length_minutes=new_length_minutes
+    )
 
-
-  assert False
+  assert "Either just provide the new length without an end date. Or" in str(excinfo.value)
 
 def test_changing_startDate_startTime_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)

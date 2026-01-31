@@ -228,8 +228,20 @@ def get_new_end_datetime(
                     second=0,
                     microsecond=0
                 )
+            elif new_length_minutes is not None and new_end_time_str is None and new_start_time_str is None:
+                error_msg = """The new start date and new end date were provided with a new length. Either just provide the new length without an end date. Or provide both an end date and end time."""
+                logger.warning(error_msg)
+                raise Exception(error_msg)
+            elif new_length_minutes is not None and new_start_time_str is not None:
+                error_msg = """The new start date, start time, and end date were provided with a new length. Either just provide the new length without an end date. Or provide both an end date and end time."""
+                logger.warning(error_msg)
+                raise Exception(error_msg)
+            elif new_length_minutes is None and new_start_time_str is not None: 
+                error_msg = """The new start date, startTime, and endDate were provided. The endDate needs an endTime to make sense. Or use a new length without an end date."""
+                logger.warning(error_msg)
+                raise Exception(error_msg)
             if new_end_datetime < new_start_datetime:
-                logger.error("New end datetime is earlier than new start datetime.")
+                logger.warning("New end datetime is earlier than new start datetime.")
                 return None    
             
             return new_end_datetime    
@@ -244,7 +256,7 @@ def get_new_end_datetime(
                 microsecond=0
             )
             if new_end_datetime < new_start_datetime:
-                logger.error("New end datetime is earlier than new start datetime.")
+                logger.warning("New end datetime is earlier than new start datetime.")
                 return None
             return new_end_datetime
         if new_length_minutes is not None:
@@ -278,8 +290,12 @@ def get_new_end_datetime(
                     second=0,
                     microsecond=0
                 )
+            else: 
+                error_msg = "The new start time and new end date were provided without a new end time."
+                logger.error(error_msg)
+                raise Exception(error_msg)
             if new_end_datetime < new_start_datetime:
-                logger.error("New end datetime is earlier than new start datetime.")
+                logger.warning("New end datetime is earlier than new start datetime.")
                 return None
             return new_end_datetime
         
@@ -293,7 +309,7 @@ def get_new_end_datetime(
                 microsecond=0
             )
             if new_end_datetime < new_start_datetime:
-                logger.error("New end datetime is earlier than new start datetime.")
+                logger.warning("New end datetime is earlier than new start datetime.")
                 return None
             return new_end_datetime
         if new_length_minutes is not None:
@@ -323,7 +339,7 @@ def get_new_end_datetime(
                 minute=current_start_datetime.minute,
             ) + timedelta(minutes=new_length_minutes)
         if new_end_datetime < current_start_datetime:
-            logger.error("New end datetime is earlier than current start datetime.")
+            logger.warning("New end datetime is earlier than current start datetime.")
             return None    
         
         return new_end_datetime    
@@ -337,14 +353,14 @@ def get_new_end_datetime(
             microsecond=0
         )
         if new_end_datetime < current_start_datetime:
-            logger.error("New end datetime is earlier than current start datetime.")
+            logger.warning("New end datetime is earlier than current start datetime.")
             return None    
         
         return new_end_datetime
     elif new_length_minutes is not None:
         # No date change; just length change
         if new_length_minutes < 0:
-            logger.error("new_length_minutes must be >= 0")
+            logger.warning("new_length_minutes must be >= 0")
             return None
         start = current_start_datetime
         return start + timedelta(minutes=new_length_minutes)
