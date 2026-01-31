@@ -343,3 +343,106 @@ def test_move_unique_all_day_event_to_time_on_different_date():
       microsecond=0
   )
   assert res == expected_end_datetime
+  
+  
+  """
+  NEw test cases will be added here
+  """
+  
+def test_unchanged():
+  pass
+  
+def test_changing_length():
+  pass
+
+def rest_changing_startDate():
+  pass
+
+def test_changing_startTime():
+  pass
+
+def test_changing_endDate():
+  pass
+
+def test_changing_endTime():
+  pass
+
+def test_changing_startDate_length():
+  pass
+
+def test_changing_startTime_length():
+  pass
+
+def test_changing_endDate_length():
+  pass
+
+def test_changing_endTime_length():
+  pass
+
+def test_changing_startDate_startTime():
+  pass
+
+def test_changing_startDate_endDate():
+  pass
+
+def test_changing_startDate_endTime():
+  pass
+
+def test_changing_startTime_endDate():
+  pass
+
+def test_changing_startTime_endTime():
+  pass
+
+def test_changing_endDate_endTime():
+  pass
+
+def test_changing_startDate_startTime_length():
+  pass
+
+def test_changing_startDate_endDate_length():
+  pass
+
+
+
+def test_changing_startDate_endTime_length():
+  pass
+
+def test_changing_startTime_endDate_length():
+  pass
+
+def test_changing_startTime_endTime_length():
+  pass
+
+def test_changing_endDate_endTime_length():
+  pass
+
+def test_changing_startDate_startTime_endDate():
+  pass
+
+def test_changing_startDate_startTime_endTime():
+  pass
+
+def test_changing_startDate_endDate_endTime():
+  pass
+
+def test_changing_startTime_endDate_endTime():
+  pass
+
+def test_changing_startDate_startTime_endDate_length():
+  pass
+
+def test_changing_startDate_startTime_endTime_length():
+  pass
+
+def test_changing_startDate_endDate_endTime_length():
+  pass
+
+def test_changing_startTime_endDate_endTime_length():
+  pass
+
+def test_changing_startDate_startTime_endDate_endTime():
+  pass
+
+def test_changing_startDate_startTime_endDate_endTime_length():
+  pass
