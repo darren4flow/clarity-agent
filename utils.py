@@ -301,6 +301,53 @@ def get_new_end_datetime(
             return new_end_datetime
         new_end_datetime = new_start_datetime + timedelta(minutes=current_length)
         return new_end_datetime
+    elif new_end_date is not None:
+        # Moving to a new end date (all-day event)
+        new_end_datetime = current_end_datetime.replace(
+            year=new_end_date.year,
+            month=new_end_date.month,
+            day=new_end_date.day
+        )
+        if new_end_time_str is not None:
+            # Also moving to a new end time on that date
+            new_end_time = datetime.strptime(new_end_time_str, "%H:%M").time()
+            new_end_datetime = new_end_datetime.replace(
+                hour=new_end_time.hour,
+                minute=new_end_time.minute,
+                second=0,
+                microsecond=0
+            )
+        elif new_length_minutes:
+            new_end_datetime = new_end_datetime.replace(
+                hour=current_start_datetime.hour,
+                minute=current_start_datetime.minute,
+            ) + timedelta(minutes=new_length_minutes)
+        if new_end_datetime < current_start_datetime:
+            logger.error("New end datetime is earlier than current start datetime.")
+            return None    
+        
+        return new_end_datetime    
+    elif new_end_time_str is not None:
+        # Moving to a new end time on the same date
+        new_end_time = datetime.strptime(new_end_time_str, "%H:%M").time()
+        new_end_datetime = current_end_datetime.replace(
+            hour=new_end_time.hour,
+            minute=new_end_time.minute,
+            second=0,
+            microsecond=0
+        )
+        if new_end_datetime < current_start_datetime:
+            logger.error("New end datetime is earlier than current start datetime.")
+            return None    
+        
+        return new_end_datetime
+    elif new_length_minutes is not None:
+        # No date change; just length change
+        if new_length_minutes < 0:
+            logger.error("new_length_minutes must be >= 0")
+            return None
+        start = current_start_datetime
+        return start + timedelta(minutes=new_length_minutes)
     else:
         # No date change; return current end datetime
         return current_end_datetime
