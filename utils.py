@@ -4,6 +4,15 @@ from typing import Optional
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+def pprint_date(d: date, time: str = "") -> str:
+    if time:
+        return d.strftime(f"%b %d, %Y at {time}")
+    return d.strftime("%b %d, %Y")
 
 def get_complete_weeks_between_dates(d1: date, d2: date) -> int:
     return abs((d1 - d2).days) // 7
@@ -143,27 +152,155 @@ def time_unit_map(time_unit: str) -> str:
     return mapping.get(time_unit, "D")
 
 
+# def get_new_end_datetime(
+#     current_length: int,
+#     new_length_minutes: Optional[int],
+#     new_end_datetime_str: Optional[str],
+#     current_start_datetime: datetime,
+#     new_start_datetime: Optional[datetime],
+# ) -> Optional[datetime]:
+#     if new_end_datetime_str is not None:
+#         try:
+#             return datetime.fromisoformat(new_end_datetime_str)
+#         except ValueError:
+#             raise ValueError(f"invalid ISO datetime: {new_end_datetime_str}")
+
+#     if new_length_minutes is not None:
+#         if new_length_minutes < 0:
+#             raise ValueError("new_length_minutes must be >= 0")
+#         start = new_start_datetime or current_start_datetime
+#         return (start + timedelta(minutes=new_length_minutes)) if start is not None else None
+
+#     # current_length is required (int) — allow 0
+#     if current_length < 0:
+#         raise ValueError("current_length must be >= 0")
+#     start = new_start_datetime or current_start_datetime
+#     return (start + timedelta(minutes=current_length)) if start is not None else None
+
+
+
+"""
+- unique event being moved to a new time (no date provided)
+- unque event moved to a new date (no time provided)
+- unique event moved to a new date and time
+- unique All-Day event 
+
+"""
 def get_new_end_datetime(
     current_length: int,
-    new_length_minutes: Optional[int],
-    new_end_datetime_str: Optional[str],
     current_start_datetime: datetime,
-    new_start_datetime: Optional[datetime],
+    current_end_datetime: datetime,
+    new_start_date: Optional[date] = None,
+    new_start_time_str: Optional[str] = None,
+    new_end_date: Optional[date] = None,
+    new_end_time_str: Optional[str] = None,
+    new_length_minutes: Optional[int] = None
 ) -> Optional[datetime]:
-    if new_end_datetime_str is not None:
-        try:
-            return datetime.fromisoformat(new_end_datetime_str)
-        except ValueError:
-            raise ValueError(f"invalid ISO datetime: {new_end_datetime_str}")
-
-    if new_length_minutes is not None:
-        if new_length_minutes < 0:
-            raise ValueError("new_length_minutes must be >= 0")
-        start = new_start_datetime or current_start_datetime
-        return (start + timedelta(minutes=new_length_minutes)) if start is not None else None
-
-    # current_length is required (int) — allow 0
-    if current_length < 0:
-        raise ValueError("current_length must be >= 0")
-    start = new_start_datetime or current_start_datetime
-    return (start + timedelta(minutes=current_length)) if start is not None else None
+    if new_start_date is not None:
+        # Moving to a new date (all-day event)
+        new_start_datetime = current_start_datetime.replace(
+            year=new_start_date.year,
+            month=new_start_date.month,
+            day=new_start_date.day
+        )
+        if new_start_time_str is not None:
+            # Also moving to a new time on that date
+            new_start_time = datetime.strptime(new_start_time_str, "%H:%M").time()
+            new_start_datetime = new_start_datetime.replace(
+                hour=new_start_time.hour,
+                minute=new_start_time.minute,
+                second=0,
+                microsecond=0
+            )
+        if new_end_date is not None:
+            # New end date specified
+            new_end_datetime = current_end_datetime.replace(
+                year=new_end_date.year,
+                month=new_end_date.month,
+                day=new_end_date.day
+            )
+            if new_end_time_str is not None:
+                # New end time specified
+                new_end_time = datetime.strptime(new_end_time_str, "%H:%M").time()
+                new_end_datetime = new_end_datetime.replace(
+                    hour=new_end_time.hour,
+                    minute=new_end_time.minute,
+                    second=0,
+                    microsecond=0
+                )
+            if new_end_datetime < new_start_datetime:
+                logger.error("New end datetime is earlier than new start datetime.")
+                return None    
+            
+            return new_end_datetime    
+        
+        if new_end_time_str is not None:
+            # New end time specified
+            new_end_time = datetime.strptime(new_end_time_str, "%H:%M").time()
+            new_end_datetime = new_start_datetime.replace(
+                hour=new_end_time.hour,
+                minute=new_end_time.minute,
+                second=0,
+                microsecond=0
+            )
+            if new_end_datetime < new_start_datetime:
+                logger.error("New end datetime is earlier than new start datetime.")
+                return None
+            return new_end_datetime
+        if new_length_minutes is not None:
+            new_end_datetime = new_start_datetime + timedelta(minutes=new_length_minutes)
+            return new_end_datetime
+        new_end_datetime = new_start_datetime + timedelta(minutes=current_length)
+        return new_end_datetime
+    elif new_start_time_str is not None:
+        # Moving to a new time on the same date
+        new_start_time = datetime.strptime(new_start_time_str, "%H:%M").time()
+        new_start_datetime = current_start_datetime.replace(
+            hour=new_start_time.hour,
+            minute=new_start_time.minute,
+            second=0,
+            microsecond=0
+        )
+        
+        if new_end_date is not None:
+            # New end date specified
+            new_end_datetime = current_end_datetime.replace(
+                year=new_end_date.year,
+                month=new_end_date.month,
+                day=new_end_date.day
+            )
+            if new_end_time_str is not None:
+                # New end time specified
+                new_end_time = datetime.strptime(new_end_time_str, "%H:%M").time()
+                new_end_datetime = new_end_datetime.replace(
+                    hour=new_end_time.hour,
+                    minute=new_end_time.minute,
+                    second=0,
+                    microsecond=0
+                )
+            if new_end_datetime < new_start_datetime:
+                logger.error("New end datetime is earlier than new start datetime.")
+                return None
+            return new_end_datetime
+        
+        if new_end_time_str is not None:
+            # New end time specified
+            new_end_time = datetime.strptime(new_end_time_str, "%H:%M").time()
+            new_end_datetime = new_start_datetime.replace(
+                hour=new_end_time.hour,
+                minute=new_end_time.minute,
+                second=0,
+                microsecond=0
+            )
+            if new_end_datetime < new_start_datetime:
+                logger.error("New end datetime is earlier than new start datetime.")
+                return None
+            return new_end_datetime
+        if new_length_minutes is not None:
+            new_end_datetime = new_start_datetime + timedelta(minutes=new_length_minutes)
+            return new_end_datetime
+        new_end_datetime = new_start_datetime + timedelta(minutes=current_length)
+        return new_end_datetime
+    else:
+        # No date change; return current end datetime
+        return current_end_datetime
