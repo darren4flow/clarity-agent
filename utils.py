@@ -153,40 +153,6 @@ def time_unit_map(time_unit: str) -> str:
     return mapping.get(time_unit, "D")
 
 
-# def get_new_end_datetime(
-#     current_length: int,
-#     new_length_minutes: Optional[int],
-#     new_end_datetime_str: Optional[str],
-#     current_start_datetime: datetime,
-#     new_start_datetime: Optional[datetime],
-# ) -> Optional[datetime]:
-#     if new_end_datetime_str is not None:
-#         try:
-#             return datetime.fromisoformat(new_end_datetime_str)
-#         except ValueError:
-#             raise ValueError(f"invalid ISO datetime: {new_end_datetime_str}")
-
-#     if new_length_minutes is not None:
-#         if new_length_minutes < 0:
-#             raise ValueError("new_length_minutes must be >= 0")
-#         start = new_start_datetime or current_start_datetime
-#         return (start + timedelta(minutes=new_length_minutes)) if start is not None else None
-
-#     # current_length is required (int) — allow 0
-#     if current_length < 0:
-#         raise ValueError("current_length must be >= 0")
-#     start = new_start_datetime or current_start_datetime
-#     return (start + timedelta(minutes=current_length)) if start is not None else None
-
-
-
-"""
-- unique event being moved to a new time (no date provided)
-- unque event moved to a new date (no time provided)
-- unique event moved to a new date and time
-- unique All-Day event 
-
-"""
 def get_new_end_datetime(
     current_length: int,
     current_start_datetime: datetime,
@@ -396,3 +362,66 @@ def get_new_end_datetime(
     else:
         # No date change; return current end datetime
         return current_end_datetime
+    
+    
+def is_toggling_allDay(isAllDay, to_update_fields):
+    # create the set of fields that are being updated
+    updated_fields_set = set()
+    for k,v in to_update_fields.items():
+        if v is not None:
+            updated_fields_set.add(k)
+    
+    if isAllDay:
+        invalid_sets_for_allDay_events = [
+            {"new_length_minutes"},
+            {"new_end_time"},
+            {"new_start_date", "new_length_minutes"},
+            {"new_end_date", "new_length_minutes"},
+            {"new_start_date", "new_start_time"},
+            {"new_start_date", "new_end_time"},
+            {"new_start_time", "new_end_date"},
+            {"new_end_date", "new_end_time"},
+            {"new_start_date", "new_end_date", "new_minutes_length"},
+            {"new_start_date", "new_end_time", "new_minutes_length"},
+            {"new_start_time", "new_end_date", "new_minutes_length"},
+            {"new_start_date", "new_start_time", "new_end_date"},
+            {"new_start_date", "new_end_date", "new_end_time"},
+            {"new_start_date", "new_start_time", "new_end_date", "new_minutes_length"},
+            {"new_start_date", "new_end_date", "new_end_time", "new_minutes_length"}
+            
+        ]
+        for invalid_set in invalid_sets_for_allDay_events:
+            if updated_fields_set == invalid_set:
+                raise Exception("Invalid update parameters for an all-day event")
+        
+        toggle_sets_for_allDay_events = [
+            {"new_start_time"},
+            {"new_start_time", "new_length_minutes"},
+            {"new_start_time", "new_end_time"},
+            {"new_start_date", "new_start_time", "new_length_minutes"},
+            {"new_start_time", "new_end_time", "new_length_minutes"},
+            {"new_start_date", "new_start_time", "new_end_time"},
+            {"new_start_time", "new_end_date", "new_end_time"},
+            {"new_start_date", "new_start_time", "new_end_time", "new_minutes_length"},
+            {"new_start_time", "new_end_date", "new_end_time", "new_minutes_length"},
+            {"new_start_date", "new_start_time", "new_end_date", "new_end_time"},
+            {"new_start_date", "new_start_time", "new_end_date", "new_end_time", "new_minutes_length"}
+        ]
+        for s in toggle_sets_for_allDay_events:
+            if updated_fields_set == s:
+                return True
+    else:
+        invalid_sets_for_timed_events = [
+            {"new_end_date"},
+            {"new_end_date", "new_length_minutes"},
+            {"new_start_date", "new_end_date"},
+            {"new_start_time", "new_end_date"},
+            {"new_start_date", "new_end_date", "new_minutes_length"},
+            {"new_start_time", "new_end_date", "new_minutes_length"},
+            {"new_start_date", "new_start_time", "new_end_date"},
+            {"new_start_date", "new_start_time", "new_end_date", "new_minutes_length"}
+        ]
+        
+        
+        
+    return False

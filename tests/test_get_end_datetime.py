@@ -26,21 +26,29 @@ def test_unchanged():
   res = get_new_end_datetime(current_length, current_start_datetime, current_end_datetime)
   assert res == current_end_datetime
   
-  
+"""
+allDay: it should raise an exception
+timed: it will work
+"""
 def test_changing_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
   current_length = 30  # in minutes
   new_length_minutes = 90
 
-  res = get_new_end_datetime(current_length, current_start_datetime, current_end_datetime, new_length_minutes=new_length_minutes)
+  res = get_new_end_datetime(
+    current_length, 
+    current_start_datetime, 
+    current_end_datetime, 
+    new_length_minutes=new_length_minutes
+  )
   expected_end_datetime = current_start_datetime + timedelta(minutes=new_length_minutes)
   assert res == expected_end_datetime
 
 
 """
-If All Day, then the date is just moved.
-If it's not all day, then the time is preserved. The user should have said if they want it to be become an all day event in this case.
+allDay: the date is just moved.
+timed: the start/end date changes and the start time and end time are preserved.
 """
 def test_changing_startDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -58,7 +66,7 @@ def test_changing_startDate():
 
 
 """
-If it was an All Day, then it should become non-all day with the new time.
+allDay: it should become non-all day with the new time.
 If it was not an All Day, then the date is preserved and only the time is changed
 """
 def test_changing_startTime():
@@ -79,10 +87,10 @@ def test_changing_startTime():
   )
   assert res == expected_end_datetime
 
-#TODO
+
 """
-If it was an All Day, then it should remain an all day with the new end date.
-If it was not an All Day,
+allDay: then it should remain an all day with the new end date.
+timed: invalid
 """
 def test_changing_endDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -98,10 +106,9 @@ def test_changing_endDate():
   )
   assert res == expected_end_datetime
 
-#TODO
 """
-If it was an All Day, then it will become a timed event, but it should have a defined start time as 
-If it was not an All Day, then the date is preserved and only the end time is changed
+allDay: invalid
+timed: valid
 """
 def test_changing_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -121,7 +128,10 @@ def test_changing_endTime():
   )
   assert res == expected_end_datetime
 
-
+"""
+allDay: invalid
+timed: valid
+"""
 def test_changing_startDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -137,6 +147,10 @@ def test_changing_startDate_length():
   ) + timedelta(minutes=new_length_minutes)
   assert res == expected_end_datetime
 
+"""
+allDay: valid
+timed: valid
+"""
 def test_changing_startTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -153,7 +167,10 @@ def test_changing_startTime_length():
   ) + timedelta(minutes=new_length_minutes)
   assert res == expected_end_datetime
 
-
+"""
+allDay: invalid
+timed: invalid
+"""
 def test_changing_endDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -173,6 +190,12 @@ def test_changing_endDate_length():
   ) + timedelta(minutes=new_length_minutes)
   assert res == expected_end_datetime
 
+
+#TODO
+"""
+allDay: 
+timed: I think it should be invalid if the new_length_minutes don't equal to the specified new end time
+"""
 def test_changing_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -184,6 +207,11 @@ def test_changing_endTime_length():
   expected_end_datetime = current_end_datetime.replace(hour=15, minute=0)
   assert res == expected_end_datetime
 
+
+"""
+allDay: invalid
+timed: valid
+"""
 def test_changing_startDate_startTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -207,6 +235,10 @@ def test_changing_startDate_startTime():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: valid
+timed: invalid
+"""
 def test_changing_startDate_endDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -228,7 +260,10 @@ def test_changing_startDate_endDate():
   )
   assert res == expected_end_datetime
 
-
+"""
+allDay: invalid
+timed: valid
+"""
 def test_changing_startDate_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -252,7 +287,10 @@ def test_changing_startDate_endTime():
   )
   assert res == expected_end_datetime
 
-
+"""
+allDay: invalid
+timed: invalid
+"""
 def test_changing_startTime_endDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -272,6 +310,10 @@ def test_changing_startTime_endDate():
   error_msg = "Invalid parameter combination: new_end_date provided without new_end_time_str while new_start_time_str is set."
   assert error_msg == str(excinfo.value)
 
+"""
+allDay: valid
+timed: valid
+"""
 def test_changing_startTime_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -292,6 +334,10 @@ def test_changing_startTime_endTime():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: invalid
+timed: valid
+"""
 def test_changing_endDate_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -315,6 +361,10 @@ def test_changing_endDate_endTime():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: valid
+timed: valid
+"""
 def test_changing_startDate_startTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -340,7 +390,10 @@ def test_changing_startDate_startTime_length():
   )
   assert res == expected_end_datetime
 
-
+"""
+allDay: invalid
+timed: invalid
+"""
 def test_changing_startDate_endDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -362,14 +415,18 @@ def test_changing_startDate_endDate_length():
   error_msg = "Invalid parameter combination: new_end_date and new_length_minutes provided without new_end_time_str."
   assert error_msg == str(excinfo.value)
 
-
+#TODO
+"""
+allDay: invalid
+timed: it would be invalid if the length resulted in a different end time than specified
+"""
 def test_changing_startDate_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
   current_length = 30  # in minutes
   new_start_date = (current_start_datetime + timedelta(days=1)).date()
   new_end_time_str = "16:00"
-  new_length_minutes = 60
+  new_length_minutes = 999
 
   res = get_new_end_datetime(
     current_length, 
@@ -388,6 +445,10 @@ def test_changing_startDate_endTime_length():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: invalid
+timed: invalid
+"""
 def test_changing_startTime_endDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -409,6 +470,11 @@ def test_changing_startTime_endDate_length():
   error_msg = "Invalid parameter combination: new_end_date provided without new_end_time_str while new_start_time_str is set."
   assert error_msg == str(excinfo.value)
 
+#TODO 
+"""
+allDay: valid (unless length doesn't match endTime)
+timed: valid (unless length doesn't match endTime)
+"""
 def test_changing_startTime_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -431,6 +497,11 @@ def test_changing_startTime_endTime_length():
   )
   assert res == expected_end_datetime
 
+#TODO
+"""
+allDay: invalid
+timed: valid (unless length doesn't match time)
+"""
 def test_changing_endDate_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -456,6 +527,11 @@ def test_changing_endDate_endTime_length():
   )
   assert res == expected_end_datetime
 
+
+"""
+allDay: invalid
+timed: invalid
+"""
 def test_changing_startDate_startTime_endDate():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -477,6 +553,10 @@ def test_changing_startDate_startTime_endDate():
   error_msg = "Invalid parameter combination: new_end_date provided without new_end_time_str while new_start_time_str is set."
   assert error_msg == str(excinfo.value)
 
+"""
+allDay: valid
+timed: valid
+"""
 def test_changing_startDate_startTime_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -502,6 +582,10 @@ def test_changing_startDate_startTime_endTime():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: invalid
+timed: valid
+"""
 def test_changing_startDate_endDate_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -527,6 +611,10 @@ def test_changing_startDate_endDate_endTime():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: valid
+timed: valid
+"""
 def test_changing_startTime_endDate_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -552,6 +640,10 @@ def test_changing_startTime_endDate_endTime():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: invalid
+timed: invalid
+"""
 def test_changing_startDate_startTime_endDate_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -575,6 +667,10 @@ def test_changing_startDate_startTime_endDate_length():
   error_msg = "Invalid parameter combination: new_end_date and new_length_minutes provided without new_end_time_str while new_start_time_str is set."
   assert error_msg == str(excinfo.value)
 
+"""
+allDay: valid (unless length doesn't match endTime)
+timed: valid (unless length doesn't match endTime)
+"""
 def test_changing_startDate_startTime_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -602,6 +698,11 @@ def test_changing_startDate_startTime_endTime_length():
   )
   assert res == expected_end_datetime
 
+#TODO
+"""
+allDay: invalid
+timed: valid (if length matches endTime)
+"""
 def test_changing_startDate_endDate_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -629,6 +730,10 @@ def test_changing_startDate_endDate_endTime_length():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: valid (check length)
+timed: valid (check length)
+"""
 def test_changing_startTime_endDate_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -656,6 +761,10 @@ def test_changing_startTime_endDate_endTime_length():
   )
   assert res == expected_end_datetime
 
+"""
+allDay: valid
+timed: valid
+"""
 def test_changing_startDate_startTime_endDate_endTime():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
@@ -683,6 +792,11 @@ def test_changing_startDate_startTime_endDate_endTime():
   )
   assert res == expected_end_datetime
 
+#TODO
+"""
+allDay: valid (check length)
+timed: valid (check length)
+"""
 def test_changing_startDate_startTime_endDate_endTime_length():
   current_start_datetime =datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
   current_end_datetime = datetime.now(timezone.utc).replace(hour=0, minute=30, second=0, microsecond=0)
