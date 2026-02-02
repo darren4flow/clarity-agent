@@ -421,7 +421,9 @@ def is_toggling_allDay(isAllDay, to_update_fields):
             {"new_start_date", "new_start_time", "new_end_date"},
             {"new_start_date", "new_start_time", "new_end_date", "new_minutes_length"}
         ]
-        
+        for invalid_set in invalid_sets_for_timed_events:
+            if updated_fields_set == invalid_set:
+                raise Exception("Invalid update parameters for a timed event")
         
         
     return False
