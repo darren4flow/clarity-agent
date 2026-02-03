@@ -152,6 +152,60 @@ def time_unit_map(time_unit: str) -> str:
     }
     return mapping.get(time_unit, "D")
 
+def get_new_start_datetime(
+    current_start_datetime: datetime,
+    new_start_date: Optional[date] = None,
+    new_start_time_str: Optional[str] = None
+) -> Optional[datetime]:
+    error_messages = {
+        "invalid_time_format": "Invalid time format: {param} must be in HH:MM.",
+    }
+
+    def raise_invalid_time_format(param_name: str) -> None:
+        msg = error_messages["invalid_time_format"].format(param=param_name)
+        logger.warning(msg)
+        raise Exception(msg)
+
+    def validate_time_str(time_str: str, param_name: str) -> None:
+        if not re.match(r"^\d{2}:\d{2}$", time_str):
+            raise_invalid_time_format(param_name)
+        hour_str, minute_str = time_str.split(":")
+        hour = int(hour_str)
+        minute = int(minute_str)
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise_invalid_time_format(param_name)
+
+    if new_start_time_str is not None:
+        validate_time_str(new_start_time_str, "new_start_time_str")
+
+    if new_start_date is not None:
+        new_start_datetime = current_start_datetime.replace(
+            year=new_start_date.year,
+            month=new_start_date.month,
+            day=new_start_date.day
+        )
+        if new_start_time_str is not None:
+            new_start_time = datetime.strptime(new_start_time_str, "%H:%M").time()
+            new_start_datetime = new_start_datetime.replace(
+                hour=new_start_time.hour,
+                minute=new_start_time.minute,
+                second=0,
+                microsecond=0
+            )
+        return new_start_datetime
+    elif new_start_time_str is not None:
+        new_start_time = datetime.strptime(new_start_time_str, "%H:%M").time()
+        new_start_datetime = current_start_datetime.replace(
+            hour=new_start_time.hour,
+            minute=new_start_time.minute,
+            second=0,
+            microsecond=0
+        )
+        return new_start_datetime
+    else:
+        return current_start_datetime
+
+
 
 def get_new_end_datetime(
     current_length: int,
