@@ -418,66 +418,105 @@ def get_new_end_datetime(
         return current_end_datetime
     
     
-def is_toggling_allDay(isAllDay, to_update_fields):
+def is_toggling_allDay(to_update_fields):
     # create the set of fields that are being updated
     updated_fields_set = set()
     for k,v in to_update_fields.items():
-        if v is not None:
+        if v is not None and k in {"new_start_date", "new_start_time", "new_end_date", "new_end_time", "new_length_minutes"}:
             updated_fields_set.add(k)
     
-    if isAllDay:
-        invalid_sets_for_allDay_events = [
-            {"new_length_minutes"},
-            {"new_end_time"},
-            {"new_start_date", "new_length_minutes"},
-            {"new_end_date", "new_length_minutes"},
-            {"new_start_date", "new_start_time"},
-            {"new_start_date", "new_end_time"},
-            {"new_start_time", "new_end_date"},
-            {"new_end_date", "new_end_time"},
-            {"new_start_date", "new_end_date", "new_minutes_length"},
-            {"new_start_date", "new_end_time", "new_minutes_length"},
-            {"new_start_time", "new_end_date", "new_minutes_length"},
-            {"new_start_date", "new_start_time", "new_end_date"},
-            {"new_start_date", "new_end_date", "new_end_time"},
-            {"new_start_date", "new_start_time", "new_end_date", "new_minutes_length"},
-            {"new_start_date", "new_end_date", "new_end_time", "new_minutes_length"}
-            
-        ]
-        for invalid_set in invalid_sets_for_allDay_events:
-            if updated_fields_set == invalid_set:
-                raise Exception("Invalid update parameters for an all-day event")
+    # this is for events that are currently all-day events
+    invalid_sets_for_allDay_events = [
+        {"new_length_minutes"},
+        {"new_end_time"},
+        {"new_start_date", "new_length_minutes"},
+        {"new_end_date", "new_length_minutes"},
+        {"new_start_date", "new_start_time"},
+        {"new_start_date", "new_end_time"},
+        {"new_start_time", "new_end_date"},
+        {"new_end_date", "new_end_time"},
+        {"new_start_date", "new_end_date", "new_length_minutes"},
+        {"new_start_date", "new_end_time", "new_length_minutes"},
+        {"new_start_time", "new_end_date", "new_length_minutes"},
+        {"new_start_date", "new_start_time", "new_end_date"},
+        {"new_start_date", "new_end_date", "new_end_time"},
+        {"new_start_date", "new_start_time", "new_end_date", "new_length_minutes"},
+        {"new_start_date", "new_end_date", "new_end_time", "new_length_minutes"}
         
-        toggle_sets_for_allDay_events = [
-            {"new_start_time"},
-            {"new_start_time", "new_length_minutes"},
-            {"new_start_time", "new_end_time"},
-            {"new_start_date", "new_start_time", "new_length_minutes"},
-            {"new_start_time", "new_end_time", "new_length_minutes"},
-            {"new_start_date", "new_start_time", "new_end_time"},
-            {"new_start_time", "new_end_date", "new_end_time"},
-            {"new_start_date", "new_start_time", "new_end_time", "new_minutes_length"},
-            {"new_start_time", "new_end_date", "new_end_time", "new_minutes_length"},
-            {"new_start_date", "new_start_time", "new_end_date", "new_end_time"},
-            {"new_start_date", "new_start_time", "new_end_date", "new_end_time", "new_minutes_length"}
+    ]
+    for invalid_set in invalid_sets_for_allDay_events:
+        if updated_fields_set == invalid_set:
+            raise Exception("Invalid update parameters for an all-day event")
+    
+    toggle_sets_for_allDay_events = [
+        {"new_start_time"},
+        {"new_start_time", "new_length_minutes"},
+        {"new_start_time", "new_end_time"},
+        {"new_start_date", "new_start_time", "new_length_minutes"},
+        {"new_start_time", "new_end_time", "new_length_minutes"},
+        {"new_start_date", "new_start_time", "new_end_time"},
+        {"new_start_time", "new_end_date", "new_end_time"},
+        {"new_start_date", "new_start_time", "new_end_time", "new_length_minutes"},
+        {"new_start_time", "new_end_date", "new_end_time", "new_length_minutes"},
+        {"new_start_date", "new_start_time", "new_end_date", "new_end_time"},
+        {"new_start_date", "new_start_time", "new_end_date", "new_end_time", "new_length_minutes"}
+    ]
+    for s in toggle_sets_for_allDay_events:
+        if updated_fields_set == s:
+            return True
+            
+def is_valid_timed_event_update(allDay_after_update, to_update_fields):
+    updated_fields_set = set()
+    for k,v in to_update_fields.items():
+        if v is not None and k in {"new_start_date", "new_start_time", "new_end_date", "new_end_time", "new_length_minutes"}:
+            updated_fields_set.add(k)
+    if allDay_after_update:
+        # this is for events that are currently timed events being changed to all-day events
+        valid_update_sets = [
+            set(),
+            {"new_start_date"},
+            {"new_end_date"},
+            {"new_start_date", "new_end_date"},
         ]
-        for s in toggle_sets_for_allDay_events:
-            if updated_fields_set == s:
-                return True
+        print("Updated fields set:", updated_fields_set)
+        isValid = False
+        for valid_update_set in valid_update_sets:
+            if updated_fields_set == valid_update_set:
+                isValid = True
+                break
+        if isValid:
+            return True
+        else:
+            raise Exception("Invalid update parameters for changing a timed event to an all-day event")
     else:
-        invalid_sets_for_timed_events = [
+        invalid_sets_for_timed_events_remaining_timed = [
             {"new_end_date"},
             {"new_end_date", "new_length_minutes"},
             {"new_start_date", "new_end_date"},
             {"new_start_time", "new_end_date"},
-            {"new_start_date", "new_end_date", "new_minutes_length"},
-            {"new_start_time", "new_end_date", "new_minutes_length"},
+            {"new_start_date", "new_end_date", "new_length_minutes"},
+            {"new_start_time", "new_end_date", "new_length_minutes"},
             {"new_start_date", "new_start_time", "new_end_date"},
-            {"new_start_date", "new_start_time", "new_end_date", "new_minutes_length"}
+            {"new_start_date", "new_start_time", "new_end_date", "new_length_minutes"}
         ]
-        for invalid_set in invalid_sets_for_timed_events:
+        for invalid_set in invalid_sets_for_timed_events_remaining_timed:
             if updated_fields_set == invalid_set:
                 raise Exception("Invalid update parameters for a timed event")
-        
-        
-    return False
+        return True 
+
+def get_new_all_day(current_allDay, to_update_fields):
+    if current_allDay:
+        if is_toggling_allDay(to_update_fields):
+            if "allDay" in to_update_fields and to_update_fields["allDay"] != False:
+                raise Exception("Invalid update parameters for an all-day event")
+            return False
+        return True
+    else:
+        try:
+            is_valid_timed_event_update(to_update_fields.get("allDay", False), to_update_fields)
+        except Exception as e:
+            raise Exception("Invalid update parameters for a timed event") from e
+        if "allDay" in to_update_fields:
+            return to_update_fields["allDay"]
+        else:
+            return current_allDay

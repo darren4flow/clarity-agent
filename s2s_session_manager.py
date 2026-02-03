@@ -4,14 +4,13 @@ import warnings
 import uuid
 import logging
 from s2s_events import S2sEvent
-import time
 from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWithBidirectionalStreamOperationInput
 from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart
 from aws_sdk_bedrock_runtime.config import Config
 from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
 import boto3
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta, time
 from zoneinfo import ZoneInfo
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
@@ -646,20 +645,20 @@ class S2sSessionManager:
                     logger.info(f"Processing update_event with content: {content}")
                     event_details = json.loads(content)
                     logger.info(f"Parsed event details for update: {event_details}")
-                    to_update_fields = {k: v for k, v in event_details.items() if k not in ["current_title", "current_start_datetime", "this_event_only", "this_and_future_events"] and v is not None}
+                    to_update_fields = {k: v for k, v in event_details.items() if k not in ["current_title", "current_start_date", "current_start_time", "this_event_only", "this_and_future_events"] and v is not None}
                     event_title = event_details.get("current_title")
-                    start_datetime = event_details.get("current_start_datetime", None)
-                    if start_datetime:
-                        start_datetime = datetime.fromisoformat(start_datetime).replace(tzinfo=tz)
-                    new_start_datetime = to_update_fields.get('new_start_datetime', None)
-                    if new_start_datetime:
-                        new_start_datetime = datetime.fromisoformat(new_start_datetime).replace(tzinfo=tz) 
                     
-                    logger.info(f"The current start_datetime is: {start_datetime}")
-                    logger.info(f"The new_start_datetime to update to is: {new_start_datetime}")
+                    start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else None
+                    start_time = event_details.get("current_start_time", None)
+                    
+                    new_start_date = to_update_fields.get('new_start_date', None)
+                    new_start_time = to_update_fields.get('new_start_time', None)   
+                    
+                    # logger.info(f"The current start_datetime is: {start_datetime}")
+                    # logger.info(f"The new_start_datetime to update to is: {new_start_datetime}")
                     
                     # return {"result": "The update_event tool is under development and not yet implemented."}
-                    logger.info(f"Searching for event to update: title='{event_title}', start_datetime='{start_datetime}'")
+                    logger.info(f"Searching for event to update: title='{event_title}', start_date='{start_date}', start_time='{start_time}'")
 
                     # Vectorize and Hybrid Search to find candidate events
                     embed_response = bedrock_client.invoke_model(
@@ -696,18 +695,22 @@ class S2sSessionManager:
                     
                     if matching_habit_names_found > 0:
                         logger.info(f"Found {matching_habit_names_found} matching habits with title '{event_title}'")
-                        if start_datetime:
+                        if start_date:
                             matches = []
                             # Find the habit configs that repeat on the target date and time
                             for habit_hit in habit_hits:
                                 cfg = HabitIndexModel.model_validate(habit_hit['_source'])
-                                if utils.isRepeatingOnDay(cfg, start_datetime.date()):
-                                    new_tz = ZoneInfo(cfg.startTime.timezone)
-                                    d = start_datetime.date()
-                                    new_dt = datetime(d.year, d.month, d.day, cfg.startTime.hour, cfg.startTime.minute, tzinfo=new_tz)
-                                    if new_dt == start_datetime:
+                                if utils.isRepeatingOnDay(cfg, start_date):
+                                    if start_time:
+                                        new_tz = ZoneInfo(cfg.startTime.timezone)
+                                        new_dt = datetime(start_date.year, start_date.month, start_date.day, cfg.startTime.hour, cfg.startTime.minute, tzinfo=new_tz)
+                                        start_datetime_obj = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=new_tz)
+                                        if new_dt == start_datetime_obj:
+                                            matches.append(habit_hit)
+                                            logger.info(f"Found a repeating event config that matches the title and time and repeats on the target date {start_date}")
+                                    else:
                                         matches.append(habit_hit)
-                                        logger.info(f"Found a repeating event config that matches the title and repeats on the target date {start_datetime.date()}")
+                                        logger.info(f"Found a repeating event config that matches the title and repeats on the target date {start_date}")
                             
                             # If we have exactly one match, proceed to update
                             if len(matches) == 1:
@@ -722,7 +725,8 @@ class S2sSessionManager:
                                 habit_item = {k: deserializer.deserialize(v) for k, v in ddb_habit_item['Item'].items()}
                                 cfg = RepeatingEventConfigModel.model_validate(habit_item)
                                 logger.info(f"Fetched recurring event config from DynamoDB: {habit_item}")
-
+                                start_datetime = datetime.combine(start_date, time(cfg.startTime.hour, cfg.startTime.minute)).replace(tzinfo=ZoneInfo(cfg.startTime.timezone))
+                                end_datetime = start_datetime + timedelta(minutes=cfg.length)
                                 if event_details.get("this_event_only", False):
                                     logger.info(f"Updating only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
                                     new_exception_dates = cfg.exceptionDates or []
@@ -742,12 +746,21 @@ class S2sSessionManager:
                                     #     refresh=True
                                     # )
                                     
+                                    try:
+                                        allDay_value = utils.get_new_all_day(cfg.allDay, to_update_fields)
+                                    except Exception as e:
+                                        logger.error(f"Error determining allDay value for update: {e}", exc_info=True)
+                                        return {"result": f"Error {e}"}
+                                    new_start_datetime = utils.get_new_start_datetime(start_datetime, new_start_date, new_start_time)
                                     new_end_datetime = utils.get_new_end_datetime(
                                         cfg.length,
-                                        to_update_fields.get('new_length_minutes', None),
-                                        to_update_fields.get('new_end_datetime', None),
                                         start_datetime,
-                                        new_start_datetime
+                                        end_datetime,
+                                        new_start_date,
+                                        new_start_time,
+                                        new_end_date = to_update_fields.get("new_end_date", None),
+                                        new_end_time_str= to_update_fields.get("new_end_time", None),
+                                        new_length_minutes= to_update_fields.get("new_length_minutes", None)
                                     )
                                     if new_end_datetime is None:
                                         return {"result": "Unable to determine new end datetime for the updated event occurrence."}
@@ -759,12 +772,12 @@ class S2sSessionManager:
                                         "done": to_update_fields.get("done", False),
                                         "description": to_update_fields.get("new_title", cfg.name),
                                         "habitId": cfg.id,
-                                        "allDay": to_update_fields.get("allDay", cfg.allDay),
+                                        "allDay": allDay_value,
                                         "type": to_update_fields.get("type", cfg.eventType),
                                         "fixed": to_update_fields.get("fixed", cfg.fixed),
                                         "priority": to_update_fields.get("priority", cfg.priority),
                                         "content": to_update_fields.get("content", cfg.content),
-                                        "startDate": new_start_datetime.isoformat() if new_start_datetime else start_datetime.isoformat(),
+                                        "startDate": new_start_datetime.isoformat(),
                                         "endDate": new_end_datetime.isoformat(),
                                         "notifications": to_update_fields.get("notifications", cfg.notifications) 
                                     }
@@ -841,7 +854,10 @@ class S2sSessionManager:
                                 else:
                                     return {"result": f"Do you want to update only the occurrence on {start_datetime.strftime('%m/%d/%Y %I:%M %p')}? Or do you want to update this event and all future occurrences?"}
                             elif len(matches) > 1:
-                                return {"result": f"Unable to update because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date and time."}
+                                if start_time:
+                                    return {"result": f"Unable to update because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date and time."}
+                                else:
+                                    return {"result": f"Unable to update because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date. Please provide the start time as well to identify the specific occurrence."}
                             else:
                                 logger.info(f"No matching occurrences found on {start_datetime} for recurring event '{event_title}'. This is probably due to exception dates.")
                         else:
