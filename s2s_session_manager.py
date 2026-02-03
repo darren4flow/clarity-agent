@@ -640,6 +640,9 @@ class S2sSessionManager:
                     logger.error(f"Error during event deletion: {e}", exc_info=True)
                     return {"result": "Sorry, I couldn't process that delete request."}
                 
+            #------------------------------------------------------------------------------
+            # Update event tool
+            #------------------------------------------------------------------------------
             elif toolName == "update_event":
                 try:
                     logger.info(f"Processing update_event with content: {content}")
@@ -651,7 +654,7 @@ class S2sSessionManager:
                     start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else None
                     start_time = event_details.get("current_start_time", None)
                     
-                    new_start_date = to_update_fields.get('new_start_date', None)
+                    new_start_date = date.fromisoformat(to_update_fields.get('new_start_date', None)) if to_update_fields.get('new_start_date', None) else None
                     new_start_time = to_update_fields.get('new_start_time', None)   
                     
                     # logger.info(f"The current start_datetime is: {start_datetime}")
@@ -727,6 +730,25 @@ class S2sSessionManager:
                                 logger.info(f"Fetched recurring event config from DynamoDB: {habit_item}")
                                 start_datetime = datetime.combine(start_date, time(cfg.startTime.hour, cfg.startTime.minute)).replace(tzinfo=ZoneInfo(cfg.startTime.timezone))
                                 end_datetime = start_datetime + timedelta(minutes=cfg.length)
+                                try:
+                                    allDay_value = utils.get_new_all_day(cfg.allDay, to_update_fields)
+                                except Exception as e:
+                                    logger.error(f"Error determining allDay value for update: {e}", exc_info=True)
+                                    return {"result": f"Error {e}"}
+                                new_start_datetime = utils.get_new_start_datetime(start_datetime, new_start_date, new_start_time)
+                                new_end_datetime = utils.get_new_end_datetime(
+                                        cfg.length,
+                                        start_datetime,
+                                        end_datetime,
+                                        new_start_date,
+                                        new_start_time,
+                                        new_end_date = to_update_fields.get("new_end_date", None),
+                                        new_end_time_str= to_update_fields.get("new_end_time", None),
+                                        new_length_minutes= to_update_fields.get("new_length_minutes", None)
+                                )
+                                if new_end_datetime is None:
+                                    return {"result": "Unable to determine new end datetime for the updated event occurrence."}
+                                
                                 if event_details.get("this_event_only", False):
                                     logger.info(f"Updating only this occurrence on {start_datetime} for recurring event '{matches[0]['_source']['title']}'")
                                     new_exception_dates = cfg.exceptionDates or []
@@ -745,25 +767,6 @@ class S2sSessionManager:
                                     #     body={"doc": {"exceptionDates": [d.isoformat() for d in new_exception_dates]}},
                                     #     refresh=True
                                     # )
-                                    
-                                    try:
-                                        allDay_value = utils.get_new_all_day(cfg.allDay, to_update_fields)
-                                    except Exception as e:
-                                        logger.error(f"Error determining allDay value for update: {e}", exc_info=True)
-                                        return {"result": f"Error {e}"}
-                                    new_start_datetime = utils.get_new_start_datetime(start_datetime, new_start_date, new_start_time)
-                                    new_end_datetime = utils.get_new_end_datetime(
-                                        cfg.length,
-                                        start_datetime,
-                                        end_datetime,
-                                        new_start_date,
-                                        new_start_time,
-                                        new_end_date = to_update_fields.get("new_end_date", None),
-                                        new_end_time_str= to_update_fields.get("new_end_time", None),
-                                        new_length_minutes= to_update_fields.get("new_length_minutes", None)
-                                    )
-                                    if new_end_datetime is None:
-                                        return {"result": "Unable to determine new end datetime for the updated event occurrence."}
                                     
                                     logger.info(f"Added {start_datetime} to the repeating event config's exception dates")
                                     new_event = {
@@ -823,7 +826,7 @@ class S2sSessionManager:
                                         "userId": cfg.userId,
                                         "name": to_update_fields.get("new_title", cfg.name),
                                         "content": to_update_fields.get("content", cfg.content),
-                                        "creationDate": start_datetime.date().strftime('%Y-%m-%d'), # YYYY-MM-DD in user's timezone
+                                        "creationDate": new_start_datetime.date().strftime('%Y-%m-%d'), #TODO: YYYY-MM-DD in user's timezone
                                         "type": to_update_fields.get("type", cfg.eventType),
                                         "priority": to_update_fields.get("priority", cfg.priority),
                                         "fixed": to_update_fields.get("fixed", cfg.fixed),
@@ -831,12 +834,12 @@ class S2sSessionManager:
                                         "frequency": to_update_fields.get("frequency", cfg.frequency),
                                         "notifications": to_update_fields.get("notifications", cfg.notifications),
                                         "days": to_update_fields.get("days", cfg.days),
-                                        "allDay": to_update_fields.get("allDay", cfg.allDay),
+                                        "allDay": allDay_value,
                                         "exceptionDates": [],
                                         "prevVersionHabitId": cfg.id,
                                         "startTime": {
-                                          "hour": new_start_datetime.hour if new_start_datetime else cfg.startTime.hour,
-                                          "minute": new_start_datetime.minute if new_start_datetime else cfg.startTime.minute,
+                                          "hour": new_start_datetime.hour,
+                                          "minute": new_start_datetime.minute,
                                           "timezone": self.timezone
                                         },
                                         "length": to_update_fields.get("new_length_minutes", cfg.length),
