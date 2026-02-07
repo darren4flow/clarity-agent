@@ -1361,7 +1361,7 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
     # call processToolUse for update_event with this_event_only = true
     payload = {
         "current_title": "Test Habit",
-        "current_start_datetime": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00",
+        "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
         "this_and_future_events": True,
         "new_title": "Updated Title",
         "new_length_minutes": 60,
@@ -1473,7 +1473,7 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
     expected_new_cfg = {
       "userId": "test-user",
       "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
-      "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],
+      "exceptionDates": [datetime.now(ZoneInfo("UTC")).date()],
       "length": payload["new_length_minutes"],
       "allDay": False,
       "type": "personal", 
@@ -1700,6 +1700,7 @@ async def test_update_nonrepeating_event_multiple_matches_only_date_given(monkey
     payload = {
         "current_title": "Test Event",
         "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+        "current_start_time": "10:00",
         "new_title": "Updated Title",
         "new_length_minutes": 60,
         "fixed": True,
