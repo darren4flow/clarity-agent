@@ -826,7 +826,7 @@ class S2sSessionManager:
                                         "userId": cfg.userId,
                                         "name": to_update_fields.get("new_title", cfg.name),
                                         "content": to_update_fields.get("content", cfg.content),
-                                        "creationDate": new_start_datetime.date().strftime('%Y-%m-%d'), #TODO: YYYY-MM-DD in user's timezone
+                                        "creationDate": new_start_datetime.date().strftime('%Y-%m-%d'),
                                         "type": to_update_fields.get("type", cfg.eventType),
                                         "priority": to_update_fields.get("priority", cfg.priority),
                                         "fixed": to_update_fields.get("fixed", cfg.fixed),
@@ -862,15 +862,27 @@ class S2sSessionManager:
                                 else:
                                     return {"result": f"Unable to update because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date. Please provide the start time as well to identify the specific occurrence."}
                             else:
-                                logger.info(f"No matching occurrences found on {start_datetime} for recurring event '{event_title}'. This is probably due to exception dates.")
+                                logger.info(f"No matching occurrences found on {utils.pprint_date(start_date, start_time)} for recurring event '{event_title}'. This is probably due to exception dates.")
                         else:
                             return {"result": f"Cannot update event '{event_title}' without a start date and time because it is a recurring event. Please provide the start date and time to identify the specific occurrence to update."}
                     else:
                         logger.info("No matching habits that will autogenerate the event found on the specified date is found. Checking saved events now.")
                     
-                    if start_datetime:
+                    if start_date and start_time:
+                        start_datetime = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
                         filters.append({"term": {"startDate": start_datetime.isoformat()}})
-                        logger.info(f"Added startDate filter for search: {start_datetime.isoformat()}")
+                        logger.info(f"Added startDate term filter for search: {start_datetime.isoformat()}")
+                    elif start_date:
+                        start_range, end_range = utils.get_utc_day_bounds(start_date, self.timezone)
+                        filters.append({"range": {"startDate": {"gte": start_range.isoformat(), "lte": end_range.isoformat()}}})
+                        logger.info(f"Added startDate range filter for search: gte {start_range.isoformat()} lte {end_range.isoformat()}")
+                    elif start_time:
+                        # search for today's date with the provided time
+                        today_date = datetime.now(tz).date()
+                        search_datetime = datetime.fromisoformat(f"{today_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
+                        filters.append({"term": {"startDate": search_datetime.isoformat()}})
+                        logger.info(f"Added startDate term filter for search: {search_datetime.isoformat()}")
+                    
                     search_body["query"]["bool"]["filter"] = filters
                     opensearch_response = opensearch_client.search(
                         index="calendar-events",
@@ -884,8 +896,13 @@ class S2sSessionManager:
                         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
                     
                     if total_found == 0:
-                        logger.info(f"No events found matching title '{event_title}' for update")
-                        return {"result": f"No matching events found for title '{event_title}'."}
+                        result_msg = f"No events found matching title '{event_title}'"
+                        if start_date:
+                            result_msg += f" and start date '{start_date}'"
+                        if start_time:
+                            result_msg += f" and start time '{start_time}'."
+                        logger.info(result_msg  )
+                        return {"result": result_msg}
                     
                     # handle ambiguity vs exact match
                     target_doc = None
@@ -893,15 +910,30 @@ class S2sSessionManager:
                         # exact match
                         target_doc = hits[0]
                         logger.info(f"Single matching event found for update: {target_doc}")
-                    elif start_datetime:
+                    elif start_date and start_time:
                         # filter by start date if provided
+                        search_dt = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
                         for hit in hits:
-                            if hit['_source']['startDate'] == start_datetime.isoformat():
+                            if hit['_source']['startDate'] == search_dt.isoformat():
                                 target_doc = hit
-                                logger.info(f"Matching event found for update with start date: {target_doc}")
+                                logger.info(f"Matching event found for update with start datetime: {target_doc}")
                                 break
                         if not target_doc:
-                            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date {start_datetime.isoformat()}."}
+                            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {search_dt.isoformat()}."}
+                    elif start_date:
+                        options = [f"on {hit['_source']['startDate']}" for hit in hits]
+                        return {"result": f"found {total_found} matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to update."}
+                    elif start_time:
+                        # search for today's date with the provided time
+                        today_date = datetime.now(tz).date()
+                        search_dt = datetime.fromisoformat(f"{today_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
+                        for hit in hits:
+                            if hit['_source']['startDate'] == search_dt.isoformat():
+                                target_doc = hit
+                                logger.info(f"Matching event found for update with start datetime: {target_doc}")
+                                break
+                        if not target_doc:
+                            return {"result": f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."}
                     else:
                         options = [f"on {hit['_source']['startDate']}" for hit in hits]
                         return {
@@ -924,26 +956,36 @@ class S2sSessionManager:
                                     return {"result": f"Could not find the event in the database for title '{event_title}'."}
                                 event_item = {k: deserializer.deserialize(v) for k, v in ddb_event_item['Item'].items()}
                                 current_start_datetime = datetime.fromisoformat(event_item['startDate']).replace(tzinfo=tz)
-                                current_length = int((datetime.fromisoformat(event_item['endDate']) - start_datetime).total_seconds() / 60)
+                                current_end_datetime = datetime.fromisoformat(event_item['endDate']).replace(tzinfo=tz)
+                                current_length = int((current_end_datetime - current_start_datetime).total_seconds() / 60)
                                 
+                                try:
+                                    allDay_value = utils.get_new_all_day(event_item.get("allDay", False), to_update_fields)
+                                except Exception as e:
+                                    logger.error(f"Error determining allDay value for update: {e}", exc_info=True)
+                                    return {"result": f"Error {e}"}
+                                new_start_datetime = utils.get_new_start_datetime(current_start_datetime, new_start_date, new_start_time)
                                 new_end_datetime = utils.get_new_end_datetime(
-                                    current_length,
-                                    to_update_fields.get('new_length_minutes', None),
-                                    to_update_fields.get('new_end_datetime', None),
-                                    current_start_datetime,
-                                    new_start_datetime
+                                        current_length,
+                                        current_start_datetime,
+                                        current_end_datetime,
+                                        new_start_date,
+                                        new_start_time,
+                                        new_end_date = to_update_fields.get("new_end_date", None),
+                                        new_end_time_str= to_update_fields.get("new_end_time", None),
+                                        new_length_minutes= to_update_fields.get("new_length_minutes", None)
                                 )
                                 if new_end_datetime is None:
                                     return {"result": "Unable to determine new end datetime for the updated event occurrence."}
                                 updated_fields = {
                                         "done": to_update_fields.get("done", event_item.get("done", False)),
                                         "description": to_update_fields.get("new_title", event_item["description"]),
-                                        "allDay": to_update_fields.get("allDay", event_item.get("allDay", False)),
+                                        "allDay": allDay_value,
                                         "type": to_update_fields.get("type", event_item.get("type", "personal")),
                                         "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                                         "priority": to_update_fields.get("priority", event_item.get("priority", None)),
                                         "content": to_update_fields.get("content", event_item.get("content", None)),
-                                        "startDate": new_start_datetime.isoformat() if new_start_datetime else current_start_datetime.isoformat(),
+                                        "startDate": new_start_datetime.isoformat(),
                                         "endDate": new_end_datetime.isoformat(),
                                         "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
                                 }

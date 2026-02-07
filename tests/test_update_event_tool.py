@@ -9,8 +9,10 @@ from unittest.mock import Mock
 from types import SimpleNamespace
 import s2s_session_manager
 from s2s_session_manager import S2sSessionManager
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
+import utils
+from utils import get_utc_day_bounds
 
 
 @pytest.mark.asyncio
@@ -930,7 +932,8 @@ async def test_update_repeating_saved_timed_event_this_event_only(monkeypatch):
     
     payload = {
         "current_title": "Test Habit",
-        "current_start_datetime": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00",
+        "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+        "current_start_time": "10:00",
         "this_event_only": True,
         "new_title": "Updated Title",
         "new_length_minutes": 60,
@@ -1028,15 +1031,312 @@ async def test_update_repeating_saved_timed_event_this_event_only(monkeypatch):
     
 @pytest.mark.asyncio
 async def test_update_repeating_saved_all_day_event_this_event_only(monkeypatch):
-    pass
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+    
+    payload = {
+        "current_title": "Test Habit",
+        "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+        "this_event_only": True,
+        "new_title": "Updated Title",
+        "fixed": True,
+        "priority": "critical"
+    }
+
+    # mock Bedrock embed response
+    embed_body = Mock()
+    embed_body.read = Mock(return_value=json.dumps({"embedding": [0.1, 0.2]}).encode("utf-8"))
+    monkeypatch.setattr(s2s_session_manager, "bedrock_client", Mock(invoke_model=Mock(return_value={"body": embed_body})))
+
+    # mock OpenSearch habits search (one habit hit)
+    habit_hit = {
+        "_id": "hid",
+        "_score": 1,
+        "_source": {
+            "userId": "test-user",
+            "habitId": "hid",
+            "title": "Test Habit",
+            "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+            "stopDate": None,
+            "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+            "frequency": "1D",
+            "days": [],
+            "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],  # ensure exception date exists because it's a saved event
+            "length": 15,
+            "allDay": True
+        }
+    }
+    habits_resp = {"hits": {"total": {"value": 1}, "hits": [habit_hit]}}
+    event_data = {
+        "eventId": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "title": "Test Habit",
+        "done": False,
+        "allDay": True,
+        "type": "personal",
+        "fixed": False,
+        "content": None,
+        "notifications": [],
+        "priority": None
+    }
+    events_hit = {
+        "_id": "eid",
+        "_source": event_data,
+        "_score": 1
+    }
+    events_resp = {"hits": {"total": {"value": 1}, "hits": [events_hit]}}
+    mock_os = Mock()
+    mock_os.search.side_effect = [habits_resp, events_resp]
+    monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+
+
+    ddb_event_data = event_data.copy()
+    ddb_event_data['id'] = ddb_event_data.pop('eventId')
+    ddb_event_data['description'] = ddb_event_data.pop('title')
+
+    # mock DynamoDB + serializer/deserializer
+    mock_ddb = Mock()
+    mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
+    mock_ddb.put_item = Mock()
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+
+   # call processToolUse for update_event with this_event_only = true
+    res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+    
+    assert isinstance(res, dict)
+    assert "Successfully updated only the occurrence on " in res["result"]
+    assert mock_ddb.get_item.called
+    assert mock_ddb.put_item.called
+    
+    # Ensure that the old repeat config has a stop date set
+    actual_updated_event = res["updated_event"]
+    expected_updated_event = {
+        "id": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "description": "Updated Title",
+        "done": False,
+        "allDay": True,
+        "type": "personal",
+        "fixed": True,
+        "content": None,
+        "notifications": [],
+        "priority": "critical"
+    }
+    assert actual_updated_event == expected_updated_event
 
 @pytest.mark.asyncio
 async def test_update_repeating_saved_timed_event_to_all_day_this_event_only(monkeypatch):
-    pass
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+    
+    payload = {
+        "current_title": "Test Habit",
+        "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+        "this_event_only": True,
+        "new_title": "Updated Title",
+        "fixed": True,
+        "allDay": True,
+        "priority": "critical"
+    }
+
+    # mock Bedrock embed response
+    embed_body = Mock()
+    embed_body.read = Mock(return_value=json.dumps({"embedding": [0.1, 0.2]}).encode("utf-8"))
+    monkeypatch.setattr(s2s_session_manager, "bedrock_client", Mock(invoke_model=Mock(return_value={"body": embed_body})))
+
+    # mock OpenSearch habits search (one habit hit)
+    habit_hit = {
+        "_id": "hid",
+        "_score": 1,
+        "_source": {
+            "userId": "test-user",
+            "habitId": "hid",
+            "title": "Test Habit",
+            "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+            "stopDate": None,
+            "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+            "frequency": "1D",
+            "days": [],
+            "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],  # ensure exception date exists because it's a saved event
+            "length": 15,
+            "allDay": False
+        }
+    }
+    habits_resp = {"hits": {"total": {"value": 1}, "hits": [habit_hit]}}
+    event_data = {
+        "eventId": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "title": "Test Habit",
+        "done": False,
+        "allDay": False,
+        "type": "personal",
+        "fixed": False,
+        "content": None,
+        "notifications": [],
+        "priority": None
+    }
+    events_hit = {
+        "_id": "eid",
+        "_source": event_data,
+        "_score": 1
+    }
+    events_resp = {"hits": {"total": {"value": 1}, "hits": [events_hit]}}
+    mock_os = Mock()
+    mock_os.search.side_effect = [habits_resp, events_resp]
+    monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+
+
+    ddb_event_data = event_data.copy()
+    ddb_event_data['id'] = ddb_event_data.pop('eventId')
+    ddb_event_data['description'] = ddb_event_data.pop('title')
+
+    # mock DynamoDB + serializer/deserializer
+    mock_ddb = Mock()
+    mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
+    mock_ddb.put_item = Mock()
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+
+   # call processToolUse for update_event with this_event_only = true
+    res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+    
+    assert isinstance(res, dict)
+    assert "Successfully updated only the occurrence on " in res["result"]
+    assert mock_ddb.get_item.called
+    assert mock_ddb.put_item.called
+    
+    # Ensure that the old repeat config has a stop date set
+    actual_updated_event = res["updated_event"]
+    expected_updated_event = {
+        "id": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "description": "Updated Title",
+        "done": False,
+        "allDay": True,
+        "type": "personal",
+        "fixed": True,
+        "content": None,
+        "notifications": [],
+        "priority": "critical"
+    }
+    assert actual_updated_event == expected_updated_event
+
 
 @pytest.mark.asyncio
 async def test_update_repeating_saved_all_day_event_to_timed_this_event_only(monkeypatch):
-    pass
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+    
+    payload = {
+        "current_title": "Test Habit",
+        "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+        "new_start_time": "11:00",
+        "this_event_only": True,
+        "new_title": "Updated Title",
+        "fixed": True,
+        "priority": "critical"
+    }
+
+    # mock Bedrock embed response
+    embed_body = Mock()
+    embed_body.read = Mock(return_value=json.dumps({"embedding": [0.1, 0.2]}).encode("utf-8"))
+    monkeypatch.setattr(s2s_session_manager, "bedrock_client", Mock(invoke_model=Mock(return_value={"body": embed_body})))
+
+    # mock OpenSearch habits search (one habit hit)
+    habit_hit = {
+        "_id": "hid",
+        "_score": 1,
+        "_source": {
+            "userId": "test-user",
+            "habitId": "hid",
+            "title": "Test Habit",
+            "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+            "stopDate": None,
+            "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+            "frequency": "1D",
+            "days": [],
+            "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],  # ensure exception date exists because it's a saved event
+            "length": 15,
+            "allDay": True
+        }
+    }
+    habits_resp = {"hits": {"total": {"value": 1}, "hits": [habit_hit]}}
+    event_data = {
+        "eventId": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "title": "Test Habit",
+        "done": False,
+        "allDay": True,
+        "type": "personal",
+        "fixed": False,
+        "content": None,
+        "notifications": [],
+        "priority": None
+    }
+    events_hit = {
+        "_id": "eid",
+        "_source": event_data,
+        "_score": 1
+    }
+    events_resp = {"hits": {"total": {"value": 1}, "hits": [events_hit]}}
+    mock_os = Mock()
+    mock_os.search.side_effect = [habits_resp, events_resp]
+    monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+
+
+    ddb_event_data = event_data.copy()
+    ddb_event_data['id'] = ddb_event_data.pop('eventId')
+    ddb_event_data['description'] = ddb_event_data.pop('title')
+
+    # mock DynamoDB + serializer/deserializer
+    mock_ddb = Mock()
+    mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
+    mock_ddb.put_item = Mock()
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+
+   # call processToolUse for update_event with this_event_only = true
+    res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+    
+    assert isinstance(res, dict)
+    assert "Successfully updated only the occurrence on " in res["result"]
+    assert mock_ddb.get_item.called
+    assert mock_ddb.put_item.called
+    
+    # Ensure that the old repeat config has a stop date set
+    actual_updated_event = res["updated_event"]
+    expected_updated_event = {
+        "id": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:15:00+00:00",
+        "description": "Updated Title",
+        "done": False,
+        "allDay": False,
+        "type": "personal",
+        "fixed": True,
+        "content": None,
+        "notifications": [],
+        "priority": "critical"
+    }
+    assert actual_updated_event == expected_updated_event
 """
 ------------------------------------------------------------------------------
 END repeating saved event, this event only tests
@@ -1486,3 +1786,29 @@ async def test_update_nonrepeating_event_multiple_matches_only_date_given(monkey
         "priority": payload["priority"]
     }
     assert actual_updated_event == expected_updated_event
+    
+    
+def test_get_utc_day_bounds():
+    # set to today's date in Eastern Time
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz).date()
+    
+    start, end = get_utc_day_bounds(today_et, "America/New_York")
+    # check that the start is 00:00 ET in UTC
+    expected_start = datetime.combine(today_et, time(0, 0), tzinfo=tz).astimezone(ZoneInfo("UTC"))
+    expected_end = expected_start + timedelta(days=1)
+    assert start == expected_start
+    assert end == expected_end
+    
+def test_get_utc_day_bounds_dst_spring_forward():
+    tz = ZoneInfo("America/New_York")
+    local_date = datetime(2024, 3, 10).date()  # DST starts in US
+
+    start, end = get_utc_day_bounds(local_date, "America/New_York")
+
+    expected_start = datetime.combine(local_date, time(0, 0), tzinfo=tz).astimezone(ZoneInfo("UTC"))
+    expected_end = datetime.combine(datetime(2024, 3, 11).date(), time(0, 0), tzinfo=tz).astimezone(ZoneInfo("UTC"))
+
+    assert start == expected_start
+    assert end == expected_end
+    assert (end - start) == timedelta(hours=23)

@@ -1,5 +1,6 @@
 from repeating_event_config_model import HabitIndexModel
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta,  time, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 from decimal import Decimal
 from enum import Enum
@@ -520,3 +521,15 @@ def get_new_all_day(current_allDay, to_update_fields):
             return to_update_fields["allDay"]
         else:
             return current_allDay
+        
+        
+
+def get_utc_day_bounds(local_date: date, timezone_str: str) -> tuple[datetime, datetime]:
+    """
+    Given a local date and timezone string, return the UTC start (inclusive)
+    and end (exclusive) datetimes for that local date.
+    """
+    user_tz = ZoneInfo(timezone_str)
+    local_start = datetime.combine(local_date, time.min).replace(tzinfo=user_tz)
+    local_end = local_start + timedelta(days=1)
+    return local_start.astimezone(timezone.utc), local_end.astimezone(timezone.utc)
