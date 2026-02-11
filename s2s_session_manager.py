@@ -232,7 +232,7 @@ class S2sSessionManager:
                     logger.debug(f"Received event: {response_data}")
                     
                     json_data = json.loads(response_data)
-                    json_data["timestamp"] = int(time.time() * 1000)  # Milliseconds since epoch
+                    json_data["timestamp"] = int(datetime.now().timestamp() * 1000)  # Milliseconds since epoch
                     
                     event_name = None
                     if 'event' in json_data:
@@ -313,7 +313,7 @@ class S2sSessionManager:
             
             # Also send tool start event to WebSocket client
             tool_start_event_copy = tool_start_event.copy()
-            tool_start_event_copy["timestamp"] = int(time.time() * 1000)
+            tool_start_event_copy["timestamp"] = int(datetime.now().timestamp() * 1000)
             await self.output_queue.put(tool_start_event_copy)
             
             # Send tool result event
@@ -328,7 +328,7 @@ class S2sSessionManager:
             
             # Also send tool result event to WebSocket client
             tool_result_event_copy = tool_result_event.copy()
-            tool_result_event_copy["timestamp"] = int(time.time() * 1000)
+            tool_result_event_copy["timestamp"] = int(datetime.now().timestamp() * 1000)
             await self.output_queue.put(tool_result_event_copy)
 
             # Send tool content end event
@@ -337,7 +337,7 @@ class S2sSessionManager:
             
             # Also send tool content end event to WebSocket client
             tool_content_end_event_copy = tool_content_end_event.copy()
-            tool_content_end_event_copy["timestamp"] = int(time.time() * 1000)
+            tool_content_end_event_copy["timestamp"] = int(datetime.now().timestamp() * 1000)
             await self.output_queue.put(tool_content_end_event_copy)
             
         except Exception as e:
@@ -454,8 +454,8 @@ class S2sSessionManager:
                     event_details = json.loads(content)
                     event_title = event_details.get("title")
                     
-                    start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else None
-                    start_time = event_details.get("current_start_time", None)
+                    start_date = date.fromisoformat(event_details.get("start_date", None)) if event_details.get("start_date", None) else None
+                    start_time = event_details.get("start_time", None)
                     
                     #naive_start_datetime = event_details.get("start_datetime")
                     #start_datetime = None
@@ -855,13 +855,18 @@ class S2sSessionManager:
                         index="habits",
                         body=search_body
                     )
-                    logger.debug(f"OpenSearch habits search response: {opensearch_habits_response}")
+                    logger.info(f"OpenSearch habits search response: {opensearch_habits_response}")
                     matching_habit_names_found = opensearch_habits_response['hits']['total']['value']
-                    logger.info(f"Found {matching_habit_names_found} matching habits:")
-                    habit_hits = opensearch_habits_response['hits']['hits']
-                    
-                    if matching_habit_names_found > 0:
-                        logger.info(f"Found {matching_habit_names_found} matching habits with title '{event_title}'")
+                    logger.info(f"Found {matching_habit_names_found} matching habits: ")
+                    unfiltered_habit_hits = opensearch_habits_response['hits']['hits']
+                    habit_hits = []
+                    for hit in unfiltered_habit_hits:
+                        if hit['_score'] > 1.0:  # filter out low relevance matches
+                            habit_hits.append(hit)
+                        logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']}")
+                        
+                    if len(habit_hits) > 0:
+                        logger.info(f"Found {len(habit_hits)} matching habits with title '{event_title}'")
                         if start_date:
                             matches = []
                             # Find the habit configs that repeat on the target date and time
@@ -1052,12 +1057,14 @@ class S2sSessionManager:
                         index="calendar-events",
                         body=search_body
                     )
-                    hits = opensearch_response['hits']['hits']
-                    total_found = opensearch_response['hits']['total']['value']
-                    
-                    logger.info(f"OpenSearch returned {len(hits)} hits for event update search")
-                    for hit in hits:
+                    unfiltered_hits = opensearch_response['hits']['hits']
+                    logger.info(f"OpenSearch returned {len(unfiltered_hits)} hits for event update search")
+                    hits = []
+                    for hit in unfiltered_hits:
+                        if hit['_score'] > 1.0:  # filter out low relevance matches
+                            hits.append(hit)
                         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
+                    total_found = len(hits)
                     
                     if total_found == 0:
                         result_msg = f"No events found matching title '{event_title}'"
