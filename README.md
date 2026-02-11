@@ -1,0 +1,1 @@
+I'll need to set the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY before starting it locally
