@@ -12,7 +12,11 @@ from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWith
 from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart
 from aws_sdk_bedrock_runtime.config import Config, HTTPAuthSchemeResolver, SigV4AuthScheme
 from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s2s_session_manager import S2sSessionManager
+
 
 
 # Audio configuration

@@ -1,4 +1,3 @@
-from repeating_event_config_model import HabitIndexModel
 from datetime import date, datetime, timedelta,  time, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -7,6 +6,10 @@ from enum import Enum
 from uuid import UUID
 import logging
 import re
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repeating_event_config_model import HabitIndexModel
 
 # Configure logging
 logger = logging.getLogger(__name__)
