@@ -101,4 +101,4 @@ def create_event(ddb_client, user_id, content, timezone):
     logger.error(f"Error creating event: {e}", exc_info=True)
     result = f"Failed to create event: {str(e)}"
   
-  return result
+  return {"result": result}

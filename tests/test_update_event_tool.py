@@ -13,6 +13,8 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 import utils
 from utils import get_utc_day_bounds
+import tools.update_event_tool
+import tools.create_event_tool
 
 
 @pytest.mark.asyncio
@@ -29,7 +31,7 @@ async def test_create_event_calls_ddb_put_item(monkeypatch):
     mock_put = Mock()
     mock_ddb.put_item = mock_put
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.create_event_tool, "serializer", Mock(serialize=lambda v: v))
 
     s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
 
@@ -105,8 +107,8 @@ async def test_update_repeating_unsaved_timed_event_this_event_only(monkeypatch)
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -209,8 +211,8 @@ async def test_update_repeating_unsaved_timed_event_to_all_day_this_event_only(m
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -315,8 +317,8 @@ async def test_update_repeating_unsaved_all_day_event_this_event_only(monkeypatc
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -418,8 +420,8 @@ async def test_update_repeating_unsaved_all_day_to_timed_event_this_event_only(m
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -534,8 +536,8 @@ async def test_update_repeating_unsaved_timed_event_this_and_future_events(monke
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -646,8 +648,8 @@ async def test_update_repeating_unsaved_all_day_event_this_and_future_events(mon
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -755,8 +757,8 @@ async def test_update_repeating_unsaved_timed_event_to_all_day_this_and_future_e
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -866,8 +868,8 @@ async def test_update_repeating_unsaved_all_day_event_to_timed_this_and_future_e
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     # call processToolUse for update_event with this_event_only = true
     payload = {
@@ -1007,8 +1009,8 @@ async def test_update_repeating_saved_timed_event_this_event_only(monkeypatch):
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
@@ -1109,8 +1111,8 @@ async def test_update_repeating_saved_all_day_event_this_event_only(monkeypatch)
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
@@ -1212,8 +1214,8 @@ async def test_update_repeating_saved_timed_event_to_all_day_this_event_only(mon
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
@@ -1316,8 +1318,8 @@ async def test_update_repeating_saved_all_day_event_to_timed_this_event_only(mon
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
@@ -1457,8 +1459,8 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
     mock_ddb.update_item = Mock()
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
     
@@ -1572,8 +1574,8 @@ async def test_update_nonrepeating_event(monkeypatch):
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
     
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
@@ -1668,8 +1670,8 @@ async def test_update_nonrepeating_event_multiple_matches_date_and_time_given(mo
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
     
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
@@ -1766,8 +1768,8 @@ async def test_update_nonrepeating_event_multiple_matches_only_date_given(monkey
     mock_ddb.get_item = Mock(return_value={"Item": ddb_event_data})
     mock_ddb.put_item = Mock()
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "serializer", Mock(serialize=lambda v: v))
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "serializer", Mock(serialize=lambda v: v))
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
     
    # call processToolUse for update_event with this_event_only = true
     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import s2s_session_manager
 from s2s_session_manager import S2sSessionManager
+import tools.read_events_tool 
 
 
 def build_mock_ddb(events_items, habits_items):
@@ -49,7 +50,7 @@ async def test_read_events_date_only_returns_sorted_events(monkeypatch):
 
     mock_ddb = build_mock_ddb(events_items, [])
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.read_events_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     payload = {"start_date": today.isoformat()}
     res = await s.processToolUse("read_events", {"content": json.dumps(payload)})
@@ -101,7 +102,7 @@ async def test_read_events_time_range_only_includes_generated_and_saved(monkeypa
 
     mock_ddb = build_mock_ddb(events_items, habits_items)
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.read_events_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     payload = {"start_time": "09:30", "end_time": "10:30"}
     res = await s.processToolUse("read_events", {"content": json.dumps(payload)})
@@ -144,7 +145,7 @@ async def test_read_events_date_range_time_range_respects_exception_dates(monkey
 
     mock_ddb = build_mock_ddb([], habits_items)
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.read_events_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     payload = {
         "start_date": today.isoformat(),
@@ -171,7 +172,7 @@ async def test_read_events_no_results_returns_friendly_message(monkeypatch):
 
     mock_ddb = build_mock_ddb([], [])
     monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
-    monkeypatch.setattr(s2s_session_manager, "deserializer", Mock(deserialize=lambda v: v))
+    monkeypatch.setattr(tools.read_events_tool, "deserializer", Mock(deserialize=lambda v: v))
 
     payload = {"start_date": today.isoformat()}
     res = await s.processToolUse("read_events", {"content": json.dumps(payload)})

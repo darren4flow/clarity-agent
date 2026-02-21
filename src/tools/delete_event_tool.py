@@ -3,7 +3,6 @@ from datetime import datetime, date, timedelta, time
 from zoneinfo import ZoneInfo
 import sys
 from pathlib import Path
-import uuid
 import logging
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -106,7 +105,7 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                       #     refresh=True
                       # )
                       logger.info(f"Deleted only this occurrence on {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'")
-                      return f"Successfully deleted only the occurrence on {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'."
+                      return {"result": f"Successfully deleted only the occurrence on {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'."}
                   elif event_details.get("this_and_future_events", False):
                       logger.info(f"Deleting this and future occurrences from {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'")
                       new_stop_date = start_date
@@ -125,16 +124,15 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                       #     refresh=True
                       # )
                       logger.info(f"Deleted this and future occurrences from {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'")
-                      return f"Successfully deleted this and future occurrences from {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'."
+                      return {"result": f"Successfully deleted this and future occurrences from {utils.pprint_date(start_date, start_time)} for recurring event '{matches[0]['_source']['title']}'."}
                   else:
-                      return f"Do you want to delete only the occurrence on {utils.pprint_date(start_date, start_time)}? Or do you want to delete this event and all future occurrences?"
+                      return {"result": f"Do you want to delete only the occurrence on {utils.pprint_date(start_date, start_time)}? Or do you want to delete this event and all future occurrences?"}
               elif len(matches) > 1:
-                  return f"Unable to delete because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date and time."
+                  return {"result": f"Unable to delete because I found {len(matches)} recurring events with title '{event_title}' matching the provided start date and time."}
               else:
                   logger.info(f"No matching occurrences found on {utils.pprint_date(start_date, start_time)} for recurring event '{event_title}'. This is probably due to exception dates.")
           else:
-              return f"Cannot delete event '{event_title}' without a start date and time because it is a recurring event. Please provide the start date and time to identify the specific occurrence to delete."
-
+              return {"result": f"Cannot delete event '{event_title}' without a start date and time because it is a recurring event. Please provide the start date and time to identify the specific occurrence to delete."}
       # if naive_start_datetime:
       #     filters.append({"term": {"startDate": start_datetime.isoformat()}})
       #     logger.info(f"Added startDate filter for search: {start_datetime.isoformat()}")
@@ -175,7 +173,7 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
           if start_time:
               result_msg += f" and start time '{start_time}'."
           logger.info(result_msg  )
-          return result_msg
+          return {"result": result_msg}
       
       # handle ambiguity vs exact match
       target_doc = None
@@ -192,10 +190,10 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                   logger.info(f"Matching event found for deletion with start date: {target_doc}")
                   break
           if not target_doc:
-              return f"found multiple events with title '{event_title}' but none match the provided start date {search_dt.isoformat()}."
+              return {"result": f"found multiple events with title '{event_title}' but none match the provided start date {search_dt.isoformat()}."}
       elif start_date:
           options = [f"on {hit['_source']['startDate']}" for hit in hits]
-          return f"found {total_found} matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to delete."
+          return {"result": f"found {total_found} matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to delete."}
       elif start_time:
           today_date = datetime.now(tz).date()
           search_dt = datetime.fromisoformat(f"{today_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
@@ -205,10 +203,10 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                   logger.info(f"Matching event found for deletion with start datetime: {target_doc}")
                   break
           if not target_doc:
-              return f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."
+              return {"result": f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."}
       else:
           options = [f"on {hit['_source']['startDate']}" for hit in hits]
-          return f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I delete?"
+          return {"result": f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I delete?"}
       
       if target_doc:
           os_id = target_doc['_id']
@@ -221,7 +219,7 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                       TableName='Events',
                       Key={'userId': {'S': user_id}, 'id': {'S': eventId}}
                   )
-                  return f"Successfully deleted only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'."
+                  return {"result": f"Successfully deleted only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
               elif event_details.get("this_and_future_events", False):
                   new_stop_date = datetime.fromisoformat(target_doc['_source']['startDate']).date()
                   # update the habit to set stopDate in DynamoDB and OpenSearch
@@ -245,17 +243,17 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                       TableName='Events',
                       Key={'userId': {'S': user_id}, 'id': {'S': eventId}}
                   )
-                  return f"Successfully deleted this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'."
+                  return {"result": f"Successfully deleted this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
               else:
-                  return f"Do you want to delete only the occurrence on {target_doc['_source']['startDate']}? Or do you want to delete this event and all future occurrences?"
+                  return {"result": f"Do you want to delete only the occurrence on {target_doc['_source']['startDate']}? Or do you want to delete this event and all future occurrences?"}
           # opensearch_client.delete(index="calendar-events", id=os_id)
           ddb_client.delete_item(
               TableName='Events',
               Key={'userId': {'S': user_id}, 'id': {'S': eventId}}
           )
-          return f"Successfully deleted the event '{event_title}'."
+          return {"result": f"Successfully deleted the event '{event_title}'."}
       else:
-          return "No matching event found to delete."
+          return {"result": "No matching event found to delete."}
   except Exception as e:
       logger.error(f"Error during event deletion: {e}", exc_info=True)
-      return "Sorry, I couldn't process that delete request."
+      return {"result": "Sorry, I couldn't process that delete request."}
