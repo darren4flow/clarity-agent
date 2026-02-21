@@ -490,12 +490,18 @@ class S2sSessionManager:
                         index="habits",
                         body=search_body
                     )
-                    print(f"OpenSearch habits search response: {opensearch_habits_response}")
+                    logger.info(f"OpenSearch habits search response: {opensearch_habits_response}")
                     matching_habit_names_found = opensearch_habits_response['hits']['total']['value']
-                    print(f"Found {matching_habit_names_found} matching habits:")
-                    habit_hits = opensearch_habits_response['hits']['hits']
-                    if matching_habit_names_found > 0:
-                        logger.info(f"Found {matching_habit_names_found} matching habits with title '{event_title}'")
+                    logger.info(f"Found {matching_habit_names_found} matching habits:")
+                    unfiltered_habit_hits = opensearch_habits_response['hits']['hits']
+                    habit_hits = []
+                    for hit in unfiltered_habit_hits:
+                        if hit['_score'] >= 1.0:  # filter out low relevance matches
+                            habit_hits.append(hit)
+                        logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']}")
+                    
+                    if len(habit_hits) > 0:
+                        logger.info(f"Found {len(habit_hits)} matching habits with title '{event_title}'")
                         if start_date:
                             matches = []
                             for habit_hit in habit_hits:
@@ -584,13 +590,15 @@ class S2sSessionManager:
                         index="calendar-events",
                         body=search_body
                     )
-                    hits = opensearch_response['hits']['hits']
-                    total_found = opensearch_response['hits']['total']['value']
-                    
-                    logger.info(f"OpenSearch returned {len(hits)} hits for event deletion search")
-                    for hit in hits:
+                    unfiltered_hits = opensearch_response['hits']['hits']
+                    logger.info(f"OpenSearch returned {len(unfiltered_hits)} hits for event delete search")
+                    hits = []
+                    for hit in unfiltered_hits:
+                        if hit['_score'] >= 1.0:  # filter out low relevance matches
+                            hits.append(hit)
                         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
-                    
+                    total_found = len(hits)
+                           
                     if total_found == 0:
                         result_msg = f"No events found matching title '{event_title}'"
                         if start_date:

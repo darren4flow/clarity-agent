@@ -36,6 +36,7 @@ async def test_delete_repeating_unsaved_event_this_event_only(monkeypatch):
 
 	habit_hit = {
 		"_id": "hid",
+		"_score": 1.0,
 		"_source": {
 			"userId": "test-user",
 			"habitId": "hid",
@@ -79,6 +80,7 @@ async def test_delete_repeating_unsaved_event_this_and_future(monkeypatch):
 
 	habit_hit = {
 		"_id": "hid",
+		"_score": 1.0,
 		"_source": {
 			"userId": "test-user",
 			"habitId": "hid",
@@ -121,6 +123,7 @@ async def test_delete_repeating_event_requires_start_date(monkeypatch):
 
 	habit_hit = {
 		"_id": "hid",
+		"_score": 1.0,
 		"_source": {
 			"userId": "test-user",
 			"habitId": "hid",
@@ -164,7 +167,7 @@ async def test_delete_nonrepeating_event_single_match(monkeypatch):
 		"endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:30:00+00:00",
 		"userId": "test-user",
 	}
-	events_resp = {"hits": {"total": {"value": 1}, "hits": [{"_id": "eid", "_source": event_data, "_score": 1}]}}
+	events_resp = {"hits": {"total": {"value": 1}, "hits": [{"_id": "eid", "_source": event_data, "_score": 1.0}]}}
 
 	mock_os = Mock()
 	mock_os.search.side_effect = [habits_resp, events_resp]
@@ -202,7 +205,7 @@ async def test_delete_saved_repeating_event_this_event_only(monkeypatch):
 		"userId": "test-user",
 		"habitId": "hid",
 	}
-	events_resp = {"hits": {"total": {"value": 1}, "hits": [{"_id": "eid", "_source": event_data, "_score": 1}]}}
+	events_resp = {"hits": {"total": {"value": 1}, "hits": [{"_id": "eid", "_source": event_data, "_score": 1.0}]}}
 
 	mock_os = Mock()
 	mock_os.search.side_effect = [habits_resp, events_resp]
@@ -223,6 +226,44 @@ async def test_delete_saved_repeating_event_this_event_only(monkeypatch):
 	assert isinstance(res, dict)
 	assert "Successfully deleted only the occurrence" in res["result"]
 	assert mock_ddb.delete_item.called
+
+
+
+@pytest.mark.asyncio
+async def test_delete_saved_event_low_score_match(monkeypatch):
+	s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+
+	_mock_bedrock(monkeypatch)
+	_mock_serializer(monkeypatch)
+
+	habits_resp = {"hits": {"total": {"value": 0}, "hits": []}}
+	event_data = {
+		"eventId": "eid",
+		"title": "Daily Standup",
+		"startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+		"endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+		"userId": "test-user",
+	}
+	events_resp = {"hits": {"total": {"value": 1}, "hits": [{"_id": "eid", "_source": event_data, "_score": 0.5}]}}
+
+	mock_os = Mock()
+	mock_os.search.side_effect = [habits_resp, events_resp]
+	monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+
+	mock_ddb = Mock()
+	mock_ddb.delete_item = Mock()
+	monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+
+	payload = {
+		"title": "Daily Standup",
+		"start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+		"start_time": "10:00",
+		"this_event_only": True,
+	}
+	res = await s.processToolUse("delete_event", {"content": json.dumps(payload)})
+
+	assert isinstance(res, dict)
+	assert "No events found matching title" in res["result"]
 
 
 @pytest.mark.asyncio
