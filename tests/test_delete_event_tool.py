@@ -58,8 +58,8 @@ async def test_delete_repeating_unsaved_event_this_event_only(monkeypatch):
 
 	payload = {
 		"title": "Daily Standup",
-		"current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
-		"current_start_time": "10:00",
+		"start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+		"start_time": "10:00",
 		"this_event_only": True,
 	}
 	res = await s.processToolUse("delete_event", {"content": json.dumps(payload)})
@@ -101,8 +101,8 @@ async def test_delete_repeating_unsaved_event_this_and_future(monkeypatch):
 
 	payload = {
 		"title": "Daily Standup",
-		"current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
-		"current_start_time": "10:00",
+		"start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+		"start_time": "10:00",
 		"this_and_future_events": True,
 	}
 	res = await s.processToolUse("delete_event", {"content": json.dumps(payload)})
@@ -176,8 +176,8 @@ async def test_delete_nonrepeating_event_single_match(monkeypatch):
 
 	payload = {
 		"title": "Project Review",
-		"current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
-		"current_start_time": "10:00",
+		"start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+		"start_time": "10:00",
 	}
 	res = await s.processToolUse("delete_event", {"content": json.dumps(payload)})
 
@@ -214,8 +214,8 @@ async def test_delete_saved_repeating_event_this_event_only(monkeypatch):
 
 	payload = {
 		"title": "Daily Standup",
-		"current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
-		"current_start_time": "10:00",
+		"start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+		"start_time": "10:00",
 		"this_event_only": True,
 	}
 	res = await s.processToolUse("delete_event", {"content": json.dumps(payload)})
@@ -249,7 +249,7 @@ async def test_delete_multiple_matches_date_only_prompts_for_time(monkeypatch):
 
 	payload = {
 		"title": "Team Sync",
-		"current_start_date": date_str,
+		"start_date": date_str,
 	}
 	res = await s.processToolUse("delete_event", {"content": json.dumps(payload)})
 

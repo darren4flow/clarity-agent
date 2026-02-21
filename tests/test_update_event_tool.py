@@ -65,6 +65,7 @@ async def test_update_repeating_unsaved_timed_event_this_event_only(monkeypatch)
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -161,6 +162,7 @@ async def test_update_repeating_unsaved_timed_event_to_all_day_this_event_only(m
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -265,6 +267,7 @@ async def test_update_repeating_unsaved_all_day_event_this_event_only(monkeypatc
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -367,6 +370,7 @@ async def test_update_repeating_unsaved_all_day_to_timed_event_this_event_only(m
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -486,6 +490,7 @@ async def test_update_repeating_unsaved_timed_event_this_and_future_events(monke
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -597,6 +602,7 @@ async def test_update_repeating_unsaved_all_day_event_this_and_future_events(mon
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -705,6 +711,7 @@ async def test_update_repeating_unsaved_timed_event_to_all_day_this_and_future_e
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",
@@ -815,6 +822,7 @@ async def test_update_repeating_unsaved_all_day_event_to_timed_this_and_future_e
     # mock OpenSearch habits search (one habit hit)
     habit_hit = {
         "_id": "hid",
+        "_score": 1.0,
         "_source": {
             "userId": "test-user",
             "habitId": "hid",

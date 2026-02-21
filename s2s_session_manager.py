@@ -861,7 +861,7 @@ class S2sSessionManager:
                     unfiltered_habit_hits = opensearch_habits_response['hits']['hits']
                     habit_hits = []
                     for hit in unfiltered_habit_hits:
-                        if hit['_score'] > 1.0:  # filter out low relevance matches
+                        if hit['_score'] >= 1.0:  # filter out low relevance matches
                             habit_hits.append(hit)
                         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']}")
                         
@@ -1061,7 +1061,7 @@ class S2sSessionManager:
                     logger.info(f"OpenSearch returned {len(unfiltered_hits)} hits for event update search")
                     hits = []
                     for hit in unfiltered_hits:
-                        if hit['_score'] > 1.0:  # filter out low relevance matches
+                        if hit['_score'] >= 1.0:  # filter out low relevance matches
                             hits.append(hit)
                         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
                     total_found = len(hits)
