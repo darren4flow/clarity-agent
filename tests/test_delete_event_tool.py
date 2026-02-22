@@ -1,15 +1,13 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 import json
 import pytest
 from unittest.mock import Mock
-import src.s2s_session_manager as s2s_session_manager
-from src.s2s_session_manager import S2sSessionManager
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"src"))
+import s2s_session_manager as s2s_session_manager
+from s2s_session_manager import S2sSessionManager
 
 
 def _mock_bedrock(monkeypatch):

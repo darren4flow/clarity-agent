@@ -1,18 +1,10 @@
+from xxlimited import new
+import pytest
+from datetime import datetime, timedelta, timezone
 import sys
 from pathlib import Path
-from xxlimited import new
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import json
-import pytest
-from unittest.mock import Mock
-from types import SimpleNamespace
-import s2s_session_manager
-from s2s_session_manager import S2sSessionManager
-import utils
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"src"))
 from utils import get_new_end_datetime
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 
 """

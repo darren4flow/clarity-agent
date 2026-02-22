@@ -64,7 +64,6 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
         index="habits",
         body=search_body
     )
-    logger.info(f"OpenSearch habits search response: {opensearch_habits_response}")
     matching_habit_names_found = opensearch_habits_response['hits']['total']['value']
     logger.info(f"Found {matching_habit_names_found} matching habits: ")
     unfiltered_habit_hits = opensearch_habits_response['hits']['hits']

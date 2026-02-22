@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, date, timedelta, time
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import sys
 from pathlib import Path
@@ -58,7 +58,6 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
           index="habits",
           body=search_body
       )
-      logger.info(f"OpenSearch habits search response: {opensearch_habits_response}")
       matching_habit_names_found = opensearch_habits_response['hits']['total']['value']
       logger.info(f"Found {matching_habit_names_found} matching habits:")
       unfiltered_habit_hits = opensearch_habits_response['hits']['hits']

@@ -3,7 +3,6 @@ import json
 from datetime import datetime, date, timedelta, time
 from zoneinfo import ZoneInfo
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
-from boto3.dynamodb.conditions import Key
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -45,8 +44,6 @@ def read_events(ddb_client, user_id, content, timezone):
 
     if end_time_str:
         end_time_value = datetime.strptime(end_time_str, "%H:%M").time()
-    elif start_time_str:
-        end_time_value = start_time_value
     else:
         end_time_value = time(23, 59, 59)
 
@@ -70,14 +67,18 @@ def read_events(ddb_client, user_id, content, timezone):
     window_end_dt = datetime.combine(end_date, end_time_value).replace(tzinfo=tz)
 
     results = []
+    user_id_attr = serializer.serialize(user_id)
 
+    logger.info(f"Querying events for user {user_id} between {window_start_dt.isoformat()} and {window_end_dt.isoformat()}")
     events_response = ddb_client.query(
         TableName='Events',
         IndexName='userId-startDate-index',
-        KeyConditionExpression=(
-            Key('userId').eq(user_id)
-            & Key('startDate').between(window_start_dt.isoformat(), window_end_dt.isoformat())
-        )
+        KeyConditionExpression='userId = :user_id AND startDate BETWEEN :window_start AND :window_end',
+        ExpressionAttributeValues={
+            ':user_id': user_id_attr,
+            ':window_start': serializer.serialize(window_start_dt.isoformat()),
+            ':window_end': serializer.serialize(window_end_dt.isoformat())
+        }
     )
     event_items = events_response.get("Items", [])
     for item in event_items:
@@ -94,7 +95,8 @@ def read_events(ddb_client, user_id, content, timezone):
 
     habits_response = ddb_client.query(
         TableName='Habits',
-        KeyConditionExpression=Key('userId').eq(user_id)
+        KeyConditionExpression='userId = :user_id',
+        ExpressionAttributeValues={':user_id': user_id_attr}
     )
     habit_items = habits_response.get("Items", [])
     for item in habit_items:

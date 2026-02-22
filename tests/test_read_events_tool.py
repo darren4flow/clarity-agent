@@ -1,12 +1,11 @@
 import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 import json
 import pytest
 from unittest.mock import Mock
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"src"))
 import s2s_session_manager
 from s2s_session_manager import S2sSessionManager
 import tools.read_events_tool 
@@ -179,3 +178,33 @@ async def test_read_events_no_results_returns_friendly_message(monkeypatch):
 
     assert res["result"] == "No events found for that time range."
     assert res["events"] == []
+
+
+@pytest.mark.asyncio
+async def test_read_events_uses_client_query_expression_strings(monkeypatch):
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+    today = datetime.now(ZoneInfo("UTC")).date()
+
+    mock_ddb = build_mock_ddb([], [])
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(tools.read_events_tool, "deserializer", Mock(deserialize=lambda v: v))
+
+    payload = {"start_date": today.isoformat()}
+    await s.processToolUse("read_events", {"content": json.dumps(payload)})
+
+    assert mock_ddb.query.call_count == 2
+
+    events_query_kwargs = mock_ddb.query.call_args_list[0].kwargs
+    habits_query_kwargs = mock_ddb.query.call_args_list[1].kwargs
+
+    assert isinstance(events_query_kwargs["KeyConditionExpression"], str)
+    assert events_query_kwargs["KeyConditionExpression"] == "userId = :user_id AND startDate BETWEEN :window_start AND :window_end"
+    assert "ExpressionAttributeValues" in events_query_kwargs
+    assert ":user_id" in events_query_kwargs["ExpressionAttributeValues"]
+    assert ":window_start" in events_query_kwargs["ExpressionAttributeValues"]
+    assert ":window_end" in events_query_kwargs["ExpressionAttributeValues"]
+
+    assert isinstance(habits_query_kwargs["KeyConditionExpression"], str)
+    assert habits_query_kwargs["KeyConditionExpression"] == "userId = :user_id"
+    assert "ExpressionAttributeValues" in habits_query_kwargs
+    assert ":user_id" in habits_query_kwargs["ExpressionAttributeValues"]
