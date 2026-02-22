@@ -4,6 +4,10 @@ from zoneinfo import ZoneInfo
 import uuid
 import logging
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import utils
 
 
 # Configure logging
