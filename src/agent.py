@@ -1,6 +1,6 @@
 import os
 import asyncio
-from starlette.websockets import WebSocketDisconnect, WebSocket
+from starlette.websockets import WebSocketDisconnect, WebSocket, WebSocketState
 from starlette.responses import JSONResponse
 from bedrock_agentcore import BedrockAgentCoreApp
 import logging
@@ -64,6 +64,7 @@ async def websocket_handler(websocket, context):
     aws_region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
     stream_manager = None
     forward_task = None
+    ws_disconnected = False
     
     try:
         # Main message processing loop
@@ -128,7 +129,11 @@ async def websocket_handler(websocket, context):
                         logger.info("Ending session")
 
                         if stream_manager:
-                            await stream_manager.close()
+                            # Send sessionEnd through Bedrock first; manager handles shutdown ordering.
+                            if stream_manager.is_active:
+                                await stream_manager.send_raw_event(data)
+                            else:
+                                await stream_manager.close()
                             stream_manager = None
                         if forward_task and not forward_task.done():
                             forward_task.cancel()
@@ -194,6 +199,7 @@ async def websocket_handler(websocket, context):
                         pass
                     
             except WebSocketDisconnect as e:
+                ws_disconnected = True
                 logger.info(f"WebSocket disconnected: {websocket.client}")
                 logger.info(
                     f"Disconnect details: code={getattr(e, 'code', 'N/A')}, reason={getattr(e, 'reason', 'N/A')}"
@@ -227,10 +233,15 @@ async def websocket_handler(websocket, context):
             except asyncio.CancelledError:
                 pass
 
-        try:
-            await websocket.close()
-        except Exception as e:
-            logger.error(f"Error closing websocket: {e}")
+        if (
+            not ws_disconnected
+            and websocket.client_state != WebSocketState.DISCONNECTED
+            and websocket.application_state != WebSocketState.DISCONNECTED
+        ):
+            try:
+                await websocket.close()
+            except Exception as e:
+                logger.debug(f"WebSocket close skipped/failed (likely already closed): {e}")
 
         logger.info("Connection closed")
         

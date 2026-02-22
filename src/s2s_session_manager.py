@@ -4,7 +4,7 @@ import warnings
 import uuid
 import logging
 from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWithBidirectionalStreamOperationInput
-from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart
+from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart, ValidationException
 from aws_sdk_bedrock_runtime.config import Config
 from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
 import boto3
@@ -65,9 +65,13 @@ class S2sSessionManager:
         self.output_queue = asyncio.Queue(maxsize=200)  # Larger output queue for responses
         
         self.response_task = None
+        self.audio_task = None
         self.stream = None
         self.is_active = False
         self.bedrock_client = None
+        self._closing = False
+        self._session_end_sent = False
+        self._send_lock = asyncio.Lock()
         
         # Session information
         self.prompt_name = None  # Will be set from frontend
@@ -128,6 +132,7 @@ class S2sSessionManager:
         self.prompt_name = None
         self.content_name = None
         self.audio_content_name = None
+        self._session_end_sent = False
 
     async def initialize_stream(self):
         """Initialize the bidirectional stream with Bedrock."""
@@ -145,12 +150,13 @@ class S2sSessionManager:
                 InvokeModelWithBidirectionalStreamOperationInput(model_id=self.model_id)
             )
             self.is_active = True
+            self._session_end_sent = False
             
             # Start listening for responses
             self.response_task = asyncio.create_task(self._process_responses())
 
             # Start processing audio input
-            asyncio.create_task(self._process_audio_input())
+            self.audio_task = asyncio.create_task(self._process_audio_input())
             
             # Wait a bit to ensure everything is set up
             await asyncio.sleep(0.1)
@@ -168,19 +174,46 @@ class S2sSessionManager:
             if not self.stream or not self.is_active:
                 logger.warning("Stream not initialized or closed")
                 return
+
+            event = event_data.get("event", {})
+            event_name = next(iter(event.keys()), None)
+
+            # Once sessionEnd is sent, drop any non-sessionEnd events.
+            if self._session_end_sent and event_name != "sessionEnd":
+                logger.debug(f"Dropping {event_name} after sessionEnd")
+                return
             
-            event_json = json.dumps(event_data)
-            #if "audioInput" not in event_data["event"]:
-            #    print(event_json)
-            event = InvokeModelWithBidirectionalStreamInputChunk(
-                value=BidirectionalInputPayloadPart(bytes_=event_json.encode('utf-8'))
-            )
-            await self.stream.input_stream.send(event)
+            async with self._send_lock:
+                if not self.stream:
+                    return
+                if self._session_end_sent and event_name != "sessionEnd":
+                    return
+
+                event_json = json.dumps(event_data)
+                stream_event = InvokeModelWithBidirectionalStreamInputChunk(
+                    value=BidirectionalInputPayloadPart(bytes_=event_json.encode('utf-8'))
+                )
+                await self.stream.input_stream.send(stream_event)
+
+                # Mark session as ending immediately to stop any further queued input.
+                if event_name == "sessionEnd":
+                    self._session_end_sent = True
+                    self.is_active = False
+                    while not self.audio_input_queue.empty():
+                        try:
+                            self.audio_input_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
 
             # Close session
-            if "sessionEnd" in event_data["event"]:
+            if event_name == "sessionEnd":
                 await self.close()
-            
+
+        except ValidationException as e:
+            if self._closing or self._session_end_sent:
+                logger.info(f"Ignoring Bedrock ValidationException during shutdown: {e}")
+                return
+            logger.error(f"Bedrock validation error while sending event: {e}")
         except Exception:
             logger.error("Error sending event to Bedrock")
             # Don't close the stream on send errors, let Bedrock handle it
@@ -201,6 +234,9 @@ class S2sSessionManager:
                 if not audio_bytes or not prompt_name or not content_name:
                     logger.warning("Missing required audio data properties")
                     continue
+
+                if self._session_end_sent:
+                    break
 
                 # Create the audio input event
                 audio_event = S2sEvent.audio_input(prompt_name, content_name, audio_bytes.decode('utf-8') if isinstance(audio_bytes, bytes) else audio_bytes)
@@ -233,7 +269,21 @@ class S2sSessionManager:
         while self.is_active:
             try:            
                 output = await self.stream.await_output()
-                result = await output[1].receive()
+                if not output or len(output) < 2 or output[1] is None:
+                    if self._closing or self._session_end_sent:
+                        logger.info("Response stream closed during shutdown")
+                        break
+                    logger.debug("Received empty/partial output frame from Bedrock; continuing")
+                    continue
+
+                receiver = output[1]
+                result = await receiver.receive()
+                if result is None or getattr(result, "value", None) is None:
+                    if self._closing or self._session_end_sent:
+                        logger.info("Received empty response during shutdown")
+                        break
+                    logger.debug("Received empty response from Bedrock; continuing")
+                    continue
                 
                 if result.value and result.value.bytes_:
                     response_data = result.value.bytes_.decode('utf-8')
@@ -278,6 +328,24 @@ class S2sSessionManager:
                         logger.warning("Output queue full, dropping response to prevent backpressure")
                         # Continue processing instead of breaking the stream
 
+            except asyncio.CancelledError:
+                logger.debug("Response processing task cancelled")
+                break
+            except ValidationException as e:
+                if self._closing or self._session_end_sent:
+                    logger.info(f"ValidationException during shutdown, treating as expected: {e}")
+                    break
+                logger.error(f"Bedrock validation error: {e}")
+                await self.output_queue.put({
+                    "event": {"error": {"message": f"Validation error: {e}"}}
+                })
+                continue
+            except AttributeError as e:
+                if self._closing or self._session_end_sent:
+                    logger.info(f"Ignoring response AttributeError during shutdown: {e}")
+                    break
+                logger.error(f"Unexpected response attribute error: {e}", exc_info=True)
+                break
 
             except json.JSONDecodeError as ex:
                 logger.error(f"JSON decode error in _process_responses: {ex}")
@@ -303,9 +371,10 @@ class S2sSessionManager:
                     # Only break on serious errors
                     break
 
-        logger.info("Bedrock response processing loop ended, closing stream")
+        logger.info("Bedrock response processing loop ended")
         self.is_active = False
-        await self.close()
+        if not self._closing:
+            await self.close()
 
     async def _handle_tool_processing(self, prompt_name, tool_name, tool_use_content, tool_use_id):
         """Handle tool processing in background without blocking event processing"""
@@ -390,63 +459,87 @@ class S2sSessionManager:
     
     async def close(self):
         """Close the stream properly."""
-        if not self.is_active:
+        if self._closing:
+            logger.debug("Close already in progress, skipping duplicate call")
+            return
+
+        if (
+            not self.is_active
+            and self.stream is None
+            and (self.response_task is None or self.response_task.done())
+            and (self.audio_task is None or self.audio_task.done())
+        ):
             logger.debug("Stream already closed, skipping cleanup")
             return
+
+        self._closing = True
             
         logger.info("Closing Bedrock stream and cleaning up resources")
-        self.is_active = False
+        try:
+            self.is_active = False
+            self._session_end_sent = True
+            current_task = asyncio.current_task()
         
-        # Cancel any ongoing tool processing tasks
-        for task in list(self.tool_processing_tasks):
-            if not task.done():
-                task.cancel()
+            # Cancel any ongoing tool processing tasks
+            for task in list(self.tool_processing_tasks):
+                if not task.done():
+                    task.cancel()
         
-        # Wait for all tool tasks to complete or be cancelled
-        if self.tool_processing_tasks:
-            await asyncio.gather(*self.tool_processing_tasks, return_exceptions=True)
-        self.tool_processing_tasks.clear()
-        
-        # Clear audio queue to prevent processing old audio data
-        while not self.audio_input_queue.empty():
+            # Wait for all tool tasks to complete or be cancelled
+            if self.tool_processing_tasks:
+                await asyncio.gather(*self.tool_processing_tasks, return_exceptions=True)
+            self.tool_processing_tasks.clear()
+
+            # Stop audio producer first
+            if self.audio_task and not self.audio_task.done() and self.audio_task is not current_task:
+                self.audio_task.cancel()
+                await asyncio.gather(self.audio_task, return_exceptions=True)
+
+            # Close stream input before touching response task so receive() can end naturally
             try:
-                self.audio_input_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-        
-        # Clear output queue
-        while not self.output_queue.empty():
-            try:
-                self.output_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-        
-        # Reset tool use state
-        self.toolUseContent = ""
-        self.toolUseId = ""
-        self.toolName = ""
-        
-        # Reset session information
-        self.prompt_name = None
-        self.content_name = None
-        self.audio_content_name = None
-        
-        if self.stream:
-            try:
-                await self.stream.input_stream.close()
+                if self.stream:
+                    await self.stream.input_stream.close()
             except Exception as e:
-                logger.debug(f"Error closing stream: {e}")
+                logger.debug(f"Error closing stream input: {e}")
+
+            # Give response task a short chance to exit naturally; cancel only as fallback
+            if self.response_task and not self.response_task.done() and self.response_task is not current_task:
+                try:
+                    await asyncio.wait_for(self.response_task, timeout=1.0)
+                except asyncio.TimeoutError:
+                    logger.debug("Response task did not exit after input close; cancelling as fallback")
+                    self.response_task.cancel()
+                    await asyncio.gather(self.response_task, return_exceptions=True)
         
-        if self.response_task and not self.response_task.done():
-            self.response_task.cancel()
-            try:
-                await self.response_task
-            except asyncio.CancelledError:
-                pass
+            # Clear audio queue to prevent processing old audio data
+            while not self.audio_input_queue.empty():
+                try:
+                    self.audio_input_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
         
-        # Set stream to None to ensure it's properly cleaned up
-        self.stream = None
-        self.response_task = None
+            # Clear output queue
+            while not self.output_queue.empty():
+                try:
+                    self.output_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
         
-        logger.info("Bedrock stream closed successfully")
+            # Reset tool use state
+            self.toolUseContent = ""
+            self.toolUseId = ""
+            self.toolName = ""
+        
+            # Reset session information
+            self.prompt_name = None
+            self.content_name = None
+            self.audio_content_name = None
+        
+            # Set stream/tasks to None to ensure they're properly cleaned up
+            self.stream = None
+            self.response_task = None
+            self.audio_task = None
+            logger.info("Bedrock stream closed successfully")
+        finally:
+            self._closing = False
         
