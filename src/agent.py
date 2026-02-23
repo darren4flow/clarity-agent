@@ -4,58 +4,306 @@ from starlette.websockets import WebSocketDisconnect, WebSocket, WebSocketState
 from starlette.responses import JSONResponse
 from bedrock_agentcore import BedrockAgentCoreApp
 import logging
-import base64
 import json
-import uuid
-import pyaudio
-from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWithBidirectionalStreamOperationInput
-from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart
-from aws_sdk_bedrock_runtime.config import Config, HTTPAuthSchemeResolver, SigV4AuthScheme
-from smithy_aws_core.identity.environment import EnvironmentCredentialsResolver
+import uvicorn
+import requests
+from requests.exceptions import RequestException
+from datetime import datetime
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s2s_session_manager import S2sSessionManager
-
-
-
-# Audio configuration
-INPUT_SAMPLE_RATE = 16000
-OUTPUT_SAMPLE_RATE = 24000
-CHANNELS = 1
-FORMAT = pyaudio.paInt16
-CHUNK_SIZE = 1024
-
-# Global variable to track credential refresh task
-credential_refresh_task = None
-
-app = BedrockAgentCoreApp()
-
 
 # configure logging for stdout
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-@app.route("/ping", methods=["GET"])
+# Audio configuration
+INPUT_SAMPLE_RATE = 16000
+OUTPUT_SAMPLE_RATE = 24000
+CHANNELS = 1
+FORMAT = 8
+CHUNK_SIZE = 1024
+
+# Global variable to track credential refresh task
+credential_refresh_task = None
+
+
+def get_imdsv2_token():
+    """
+    Get IMDSv2 token for secure metadata access.
+
+    Returns:
+        str: The IMDSv2 token, or None if IMDSv2 is not available
+    """
+    try:
+        response = requests.put(
+            "http://169.254.169.254/latest/api/token",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+            timeout=2,
+        )
+        if response.status_code == 200:
+            return response.text
+    except Exception:
+        pass
+    return None
+
+def get_credentials_from_imds():
+    """
+    Manually retrieve IAM role credentials from envrionment Metadata Service.
+
+    This utility method fetches credentials directly from IMDS without using boto3.
+    It tries both IMDSv1 and IMDSv2 methods.
+
+    Returns:
+        dict: A dictionary containing the credentials or error information
+    """
+    result = {
+        "success": False,
+        "credentials": None,
+        "role_name": None,
+        "method_used": None,
+        "error": None,
+    }
+
+    try:
+        # Try IMDSv2 first
+        token = get_imdsv2_token()
+        headers = {}
+
+        if token:
+            headers["X-aws-ec2-metadata-token"] = token
+            result["method_used"] = "IMDSv2"
+        else:
+            result["method_used"] = "IMDSv1"
+
+        # Get the IAM role name
+        role_response = requests.get(
+            "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+            headers=headers,
+            timeout=2,
+        )
+
+        if role_response.status_code != 200:
+            result["error"] = (
+                f"Failed to retrieve IAM role name: HTTP {role_response.status_code}"
+            )
+            return result
+
+        role_name = role_response.text.strip()
+        result["role_name"] = role_name
+
+        # Get the credentials for the role
+        creds_response = requests.get(
+            f"http://169.254.169.254/latest/meta-data/iam/security-credentials/{role_name}",
+            headers=headers,
+            timeout=2,
+        )
+
+        if creds_response.status_code != 200:
+            result["error"] = (
+                f"Failed to retrieve credentials for role {role_name}: HTTP {creds_response.status_code}"
+            )
+            return result
+
+        # Parse the credentials
+        credentials = creds_response.json()
+
+        result["success"] = True
+        result["credentials"] = {
+            "AccessKeyId": credentials.get("AccessKeyId"),
+            "SecretAccessKey": credentials.get("SecretAccessKey"),
+            "Token": credentials.get("Token"),
+            "Expiration": credentials.get("Expiration"),
+            "Code": credentials.get("Code"),
+            "Type": credentials.get("Type"),
+            "LastUpdated": credentials.get("LastUpdated"),
+        }
+
+    except RequestException as e:
+        result["error"] = f"Request exception: {str(e)}"
+    except Exception as e:
+        result["error"] = f"Unexpected error: {str(e)}"
+
+    return result
+
+
+async def refresh_credentials_from_imds():
+    """
+    Background task to periodically refresh credentials from IMDS and update environment variables.
+    This ensures the EnvironmentCredentialsResolver always has fresh credentials.
+    """
+    logger.info("Starting credential refresh background task")
+
+    while True:
+        try:
+            # Fetch credentials from IMDS
+            imds_result = get_credentials_from_imds()
+
+            if imds_result["success"]:
+                creds = imds_result["credentials"]
+
+                # Update environment variables
+                os.environ["AWS_ACCESS_KEY_ID"] = creds["AccessKeyId"]
+                os.environ["AWS_SECRET_ACCESS_KEY"] = creds["SecretAccessKey"]
+                os.environ["AWS_SESSION_TOKEN"] = creds["Token"]
+
+                logger.info("✅ Credentials refreshed from IMD.")
+
+                # Parse expiration time and calculate refresh interval
+                # Refresh 5 minutes before expiration
+                try:
+                    expiration = datetime.fromisoformat(
+                        creds["Expiration"].replace("Z", "+00:00")
+                    )
+                    now = datetime.now(expiration.tzinfo)
+                    time_until_expiration = (expiration - now).total_seconds()
+
+                    # Refresh 5 minutes (300 seconds) before expiration, or in 1 hour if expiration is far away
+                    refresh_interval = min(max(time_until_expiration - 300, 60), 3600)
+                    logger.info(f"   Next refresh in {refresh_interval:.0f} seconds")
+                except Exception as e:
+                    logger.warning(
+                        f"Could not parse expiration time, using default 1 hour refresh: {e}"
+                    )
+                    refresh_interval = 3600
+
+                # Wait until next refresh
+                await asyncio.sleep(refresh_interval)
+            else:
+                logger.error(
+                    f"Failed to refresh credentials from IMDS: {imds_result['error']}"
+                )
+                # Retry in 5 minutes on failure
+                await asyncio.sleep(300)
+
+        except asyncio.CancelledError:
+            logger.info("Credential refresh task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in credential refresh task: {e}", exc_info=True)
+            # Retry in 5 minutes on error
+            await asyncio.sleep(300)
+            
+            
+# Create FastAPI app
+app = FastAPI(title="Nova Sonic S2S WebSocket Server")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.on_event("startup")
+async def startup_event():
+    global credential_refresh_task
+
+    logger.info("🚀 Application starting up...")
+    logger.info(f"📍 AWS Region: {os.getenv('AWS_DEFAULT_REGION', 'us-east-1')}")
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        logger.info(f"Route loaded: path={path}, methods={methods}, type={type(route).__name__}")
+
+    # Check if credentials are already in environment (local mode)
+    if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
+        logger.info("✅ Using credentials from environment variables (local mode)")
+        logger.info("   Credential refresh task will not be started")
+    else:
+        # Try to fetch credentials from IMDS and start refresh task
+        logger.info("🔄 Attempting to fetch credentials from ENV IMDS...")
+
+        imds_result = get_credentials_from_imds()
+
+        if imds_result["success"]:
+            creds = imds_result["credentials"]
+
+            # Set initial credentials in environment
+            os.environ["AWS_ACCESS_KEY_ID"] = creds["AccessKeyId"]
+            os.environ["AWS_SECRET_ACCESS_KEY"] = creds["SecretAccessKey"]
+            os.environ["AWS_SESSION_TOKEN"] = creds["Token"]
+
+            logger.info("✅ Initial credentials loaded from IMDS.")
+
+            # Start background task to refresh credentials
+            credential_refresh_task = asyncio.create_task(
+                refresh_credentials_from_imds()
+            )
+            logger.info("🔄 Credential refresh background task started")
+        else:
+            logger.error(
+                f"❌ Failed to fetch credentials from IMDS: {imds_result['error']}"
+            )
+            logger.error(
+                "   Application may not function correctly without credentials"
+            )
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global credential_refresh_task
+
+    logger.info("🛑 Application shutting down...")
+
+    # Cancel credential refresh task if running
+    if credential_refresh_task and not credential_refresh_task.done():
+        logger.info("Stopping credential refresh task...")
+        credential_refresh_task.cancel()
+        try:
+            await credential_refresh_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Credential refresh task stopped")
+
+
+@app.get("/health")
+@app.get("/")
+async def health_check():
+    logger.info("Health check request received")
+    return JSONResponse({"status": "healthy"})
+
+
+@app.get("/ping")
 async def ping():
     logger.debug("Ping endpoint called")
     return JSONResponse({"status": "ok"})
 
+@app.get("/credentials/info")
+async def credential_info():
+    """Get information about credential configuration (for debugging)"""
+    # Determine credential source
+    if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
+        credential_source = "Environment Variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN)"
+        mode = "local"
+        note = "Using static credentials from environment variables"
+    else:
+        credential_source = "ENV IMDS (IMDSv2 preferred, falls back to IMDSv1)"
+        mode = "ec2"
+        note = "Credentials are automatically refreshed from IMDS by background task"
 
-@app.websocket
-async def websocket_handler(websocket, context):
+    return JSONResponse(
+        {
+            "status": "ok",
+            "mode": mode,
+            "credential_source": credential_source,
+            "region": os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+            "note": note,
+        }
+    )
+
+@app.websocket("/ws")
+async def websocket_handler(websocket: WebSocket):
     logger.info(f"WebSocket connection attempted from {websocket.client}")
-    logger.debug(f"Headers: {websocket.headers}")
-    
-    user_id = websocket.query_params.get("userId", None)
-    if not user_id:
-        logger.warning("Missing userId in query parameters")
-        await websocket.close(code=1008)  # Policy Violation
-        return
-    timezone = websocket.query_params.get("timezone", None)
-    if not timezone:
-        logger.warning("Missing timezone in query parameters, defaulting to UTC")
     
     # Accept the WebSocket connection
     await websocket.accept()
@@ -65,6 +313,9 @@ async def websocket_handler(websocket, context):
     stream_manager = None
     forward_task = None
     ws_disconnected = False
+    user_id = None
+    timezone = None
+    init_received = False
     
     try:
         # Main message processing loop
@@ -78,11 +329,79 @@ async def websocket_handler(websocket, context):
 
                     # Handle wrapped body format
                     if "body" in data:
-                        data = json.loads(data["body"])
+                        body = data["body"]
+                        if isinstance(body, str):
+                            data = json.loads(body)
+                        else:
+                            data = body
+
+                    if data.get("type") == "init":
+                        if init_received:
+                            logger.warning("Received duplicate init payload")
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": "Duplicate init payload is not allowed",
+                                }
+                            )
+                            await websocket.close(code=1008)
+                            break
+
+                        init_user_id = data.get("userId")
+                        init_timezone = data.get("timezone")
+
+                        if not init_user_id or not init_timezone:
+                            logger.warning(
+                                "Invalid init payload: missing required userId or timezone"
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": "Init payload must include userId and timezone",
+                                }
+                            )
+                            await websocket.close(code=1008)
+                            break
+
+                        try:
+                            ZoneInfo(init_timezone)
+                        except Exception:
+                            logger.warning(
+                                f"Invalid timezone in init payload: {init_timezone}"
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "error",
+                                    "message": "Invalid timezone in init payload",
+                                }
+                            )
+                            await websocket.close(code=1008)
+                            break
+
+                        user_id = init_user_id
+                        timezone = init_timezone
+                        init_received = True
+                        logger.info(
+                            f"Init payload accepted for userId={user_id}, timezone={timezone}"
+                        )
+                        continue
 
                     if "event" not in data:
                         logger.warning("Received message without event field")
                         continue
+
+                    if not init_received:
+                        logger.warning(
+                            "Received event before init payload; closing connection"
+                        )
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "message": "Init payload is required before any event messages",
+                            }
+                        )
+                        await websocket.close(code=1008)
+                        break
 
                     event_type = list(data["event"].keys())[0]
 
@@ -129,11 +448,8 @@ async def websocket_handler(websocket, context):
                         logger.info("Ending session")
 
                         if stream_manager:
-                            # Send sessionEnd through Bedrock first; manager handles shutdown ordering.
-                            if stream_manager.is_active:
-                                await stream_manager.send_raw_event(data)
-                            else:
-                                await stream_manager.close()
+                            # Close locally to avoid upstream shutdown race validation errors.
+                            await stream_manager.close()
                             stream_manager = None
                         if forward_task and not forward_task.done():
                             forward_task.cancel()
@@ -389,4 +705,28 @@ async def forward_responses(websocket: WebSocket, stream_manager):
         logger.info("Forward responses task ended")
 
 if __name__ == "__main__":
-    app.run(log_level="info")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Nova Sonic S2S WebSocket Server")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    args = parser.parse_args()
+
+    if args.debug:
+        DEBUG = True
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8080"))
+
+    logger.info(f"Starting Nova Sonic S2S WebSocket Server on {host}:{port}")
+
+    try:
+        uvicorn.run(app, host=host, port=port)
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        if args.debug:
+            import traceback
+
+            traceback.print_exc()
