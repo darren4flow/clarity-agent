@@ -2,7 +2,7 @@ default_agent: clarityAgent
 agents:
   clarityAgent:
     name: clarityAgent
-    entrypoint: /Users/darren/CodeProjects/clarity/clarityAgent/agent.py
+    entrypoint: /Users/darren/CodeProjects/clarity/clarityAgent/src/agent.py
     deployment_type: container
     runtime_type: null
     platform: linux/arm64
