@@ -39,6 +39,10 @@ def get_weekday_occurrence(d: date) -> int:
 def months_between(d1: date, d2: date) -> int:
     # More correct than the JS version: includes year difference
     return abs((d2.year - d1.year) * 12 + (d2.month - d1.month))
+
+def to_utc_iso_z(dt: datetime) -> str:
+    utc_dt = dt.astimezone(timezone.utc)
+    return utc_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
   
 def isRepeatingOnDay(repeating_event_config: HabitIndexModel, target_date: date) -> bool:
   creation_date = repeating_event_config.creationDate

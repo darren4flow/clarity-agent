@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.websockets import WebSocketState
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo

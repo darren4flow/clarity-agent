@@ -17,6 +17,17 @@ deserializer = TypeDeserializer()
 def read_events(ddb_client, user_id, content, timezone):
   try:
     tz = ZoneInfo(timezone)
+    display_datetime_format = "%m/%d/%y %I:%M %p"
+
+    def to_local_datetime(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=tz)
+        return parsed.astimezone(tz)
+
+    def to_display_datetime(value: str) -> str:
+        return to_local_datetime(value).strftime(display_datetime_format)
+
     logger.info(f"Processing read_events with content: {content}")
     event_details = json.loads(content)
 
@@ -65,19 +76,23 @@ def read_events(ddb_client, user_id, content, timezone):
     
     window_start_dt = datetime.combine(start_date, start_time_value).replace(tzinfo=tz)
     window_end_dt = datetime.combine(end_date, end_time_value).replace(tzinfo=tz)
+    
+    window_start_utc = utils.to_utc_iso_z(window_start_dt)
+    window_end_utc = utils.to_utc_iso_z(window_end_dt)
 
     results = []
     user_id_attr = serializer.serialize(user_id)
 
-    logger.info(f"Querying events for user {user_id} between {window_start_dt.isoformat()} and {window_end_dt.isoformat()}")
+    logger.info(f"Querying events for user {user_id} between {window_start_utc} and {window_end_utc}")
+    logger.info(f"Serialized user_id: {user_id_attr}, window_start: {serializer.serialize(window_start_utc)}, window_end: {serializer.serialize(window_end_utc)}")
     events_response = ddb_client.query(
         TableName='Events',
         IndexName='userId-startDate-index',
         KeyConditionExpression='userId = :user_id AND startDate BETWEEN :window_start AND :window_end',
         ExpressionAttributeValues={
             ':user_id': user_id_attr,
-            ':window_start': serializer.serialize(window_start_dt.isoformat()),
-            ':window_end': serializer.serialize(window_end_dt.isoformat())
+            ':window_start': serializer.serialize(window_start_utc),
+            ':window_end': serializer.serialize(window_end_utc)
         }
     )
     event_items = events_response.get("Items", [])
@@ -128,7 +143,11 @@ def read_events(ddb_client, user_id, content, timezone):
                     })
             current_date += timedelta(days=1)
 
-    results.sort(key=lambda e: datetime.fromisoformat(e["startDate"]))
+    results.sort(key=lambda e: to_local_datetime(e["startDate"]))
+
+    for event in results:
+        event["startDate"] = to_display_datetime(event["startDate"])
+        event["endDate"] = to_display_datetime(event["endDate"])
 
     if not results:
         return {"result": "No events found for that time range.", "events": []}
