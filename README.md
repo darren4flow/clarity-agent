@@ -54,7 +54,8 @@ flowchart LR
 - `src/s2s_session_manager.py` — real-time stream/session orchestration + tool execution
 - `src/s2s_events.py` — event payload helpers
 - `src/tools/` — calendar CRUD tool implementations
-- `src/repeating_event_config_model.py` — recurrence models/validation
+- `src/models/repeating_event_config_model.py` — recurrence models/validation
+- `src/models/event_model.py` - calendar event models/validation
 - `src/utils.py` — date math + DynamoDB serialization helpers
 - `tests/` — unit tests for tool and date logic
 
