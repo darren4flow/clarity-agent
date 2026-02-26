@@ -58,13 +58,13 @@ async def test_read_events_date_only_returns_sorted_events(monkeypatch):
     assert res["events"] == [
         {
             "title": "Meeting B",
-            "startDate": f"{today.isoformat()}T08:00:00+00:00",
-            "endDate": f"{today.isoformat()}T08:30:00+00:00",
+            "startDate": f"{today.strftime('%m/%d/%y')} 08:00 AM",
+            "endDate": f"{today.strftime('%m/%d/%y')} 08:30 AM",
         },
         {
             "title": "Meeting A",
-            "startDate": f"{today.isoformat()}T09:00:00+00:00",
-            "endDate": f"{today.isoformat()}T09:30:00+00:00",
+            "startDate": f"{today.strftime('%m/%d/%y')} 09:00 AM",
+            "endDate": f"{today.strftime('%m/%d/%y')} 09:30 AM",
         },
     ]
 
@@ -110,13 +110,13 @@ async def test_read_events_time_range_only_includes_generated_and_saved(monkeypa
     assert res["events"] == [
         {
             "title": "Daily Standup",
-            "startDate": f"{today.isoformat()}T10:00:00+00:00",
-            "endDate": f"{today.isoformat()}T10:30:00+00:00",
+            "startDate": f"{today.strftime('%m/%d/%y')} 10:00 AM",
+            "endDate": f"{today.strftime('%m/%d/%y')} 10:30 AM",
         },
         {
             "title": "Inside Range",
-            "startDate": f"{today.isoformat()}T10:15:00+00:00",
-            "endDate": f"{today.isoformat()}T10:45:00+00:00",
+            "startDate": f"{today.strftime('%m/%d/%y')} 10:15 AM",
+            "endDate": f"{today.strftime('%m/%d/%y')} 10:45 AM",
         },
     ]
 
@@ -158,8 +158,8 @@ async def test_read_events_date_range_time_range_respects_exception_dates(monkey
     assert res["events"] == [
         {
             "title": "Morning Review",
-            "startDate": f"{tomorrow.isoformat()}T09:15:00+00:00",
-            "endDate": f"{tomorrow.isoformat()}T09:30:00+00:00",
+            "startDate": f"{tomorrow.strftime('%m/%d/%y')} 09:15 AM",
+            "endDate": f"{tomorrow.strftime('%m/%d/%y')} 09:30 AM",
         }
     ]
 

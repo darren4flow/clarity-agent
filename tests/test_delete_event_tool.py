@@ -30,7 +30,6 @@ async def test_delete_repeating_unsaved_event_this_event_only(monkeypatch):
 
 	_mock_bedrock(monkeypatch)
 	_mock_serializer(monkeypatch)
-	monkeypatch.setattr(s2s_session_manager.utils, "isRepeatingOnDay", Mock(return_value=True))
 
 	habit_hit = {
 		"_id": "hid",
@@ -74,7 +73,6 @@ async def test_delete_repeating_unsaved_event_this_and_future(monkeypatch):
 
 	_mock_bedrock(monkeypatch)
 	_mock_serializer(monkeypatch)
-	monkeypatch.setattr(s2s_session_manager.utils, "isRepeatingOnDay", Mock(return_value=True))
 
 	habit_hit = {
 		"_id": "hid",

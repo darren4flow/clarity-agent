@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from repeating_event_config_model import HabitIndexModel
+from event_model import EventIndexModel
 import utils
 
 # Configure logging
@@ -98,12 +99,17 @@ def read_events(ddb_client, user_id, content, timezone):
     event_items = events_response.get("Items", [])
     for item in event_items:
         event_item = {k: deserializer.deserialize(v) for k, v in item.items()}
-        start_date_str = event_item.get("startDate")
-        end_date_str = event_item.get("endDate")
+        try:
+            event = EventIndexModel.model_validate(event_item)
+        except Exception as e:
+            logger.warning(f"Skipping event due to validation error: {e}")
+            continue
+        start_date_str = event.startDate.isoformat()
+        end_date_str = event.endDate.isoformat()
         if not start_date_str or not end_date_str:
             continue
         results.append({
-            "title": event_item.get("description") or event_item.get("title") or "",
+            "title": event.description or "",
             "startDate": start_date_str,
             "endDate": end_date_str
         })

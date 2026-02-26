@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import utils
+from event_model import EventModel
 
 
 # Configure logging
@@ -92,6 +93,11 @@ def create_event(ddb_client, user_id, content, timezone):
         "endDate": end_datetime.isoformat(),
         "notifications": notifications
       }
+      validated_event = EventModel.model_validate(new_event)
+      new_event = validated_event.model_dump(mode="python", include=set(new_event.keys()))
+      for date_key in ("startDate", "endDate"):
+        if isinstance(new_event.get(date_key), datetime):
+          new_event[date_key] = new_event[date_key].isoformat()
       ddb_event_item= {k: serializer.serialize(v) for k, v in new_event.items()}
       ddb_client.put_item(TableName='Events', Item=ddb_event_item)
       logger.info(f"DynamoDB put_item succeeded for event: {new_event}")

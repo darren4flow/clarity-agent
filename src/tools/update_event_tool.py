@@ -8,12 +8,20 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from repeating_event_config_model import HabitIndexModel, RepeatingEventConfigModel
+from event_model import EventIndexModel, EventModel
 import utils
 
 # Configure logging
 logger = logging.getLogger(__name__)
 serializer = TypeSerializer()
 deserializer = TypeDeserializer()
+
+
+def _normalize_event_dump(event_dict):
+    for date_key in ("startDate", "endDate"):
+        if isinstance(event_dict.get(date_key), datetime):
+            event_dict[date_key] = event_dict[date_key].isoformat()
+    return event_dict
 
 def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content, timezone):
   try:
@@ -161,6 +169,10 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "endDate": new_end_datetime.isoformat(),
                         "notifications": to_update_fields.get("notifications", cfg.notifications) 
                     }
+                    validated_event = EventModel.model_validate(new_event)
+                    new_event = _normalize_event_dump(
+                        validated_event.model_dump(mode="python", include=set(new_event.keys()))
+                    )
                     # save to DynamoDB
                     ddb_event_item= {k: serializer.serialize(v) for k, v in new_event.items()}
                     ddb_client.put_item(TableName='Events', Item=ddb_event_item)
@@ -322,7 +334,8 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
     # Found the saved event to update
     if target_doc:
         os_id = target_doc['_id']
-        eventId = target_doc['_source']['eventId']
+        target_event = EventIndexModel.model_validate(target_doc['_source'])
+        eventId = target_event.id
         habitId = target_doc['_source'].get('habitId', None)
         
         # get the event from DynamoDB
@@ -334,6 +347,10 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
             return {"result": f"Could not find the event in the database for title '{event_title}'."}
         logger.info(f"Fetched event item from DynamoDB for update: {ddb_event_item}")
         event_item = {k: deserializer.deserialize(v) for k, v in ddb_event_item['Item'].items()}
+        validated_existing_event = EventModel.model_validate(event_item)
+        event_item = _normalize_event_dump(
+            validated_existing_event.model_dump(mode="python", include=set(event_item.keys()))
+        )
         
         # calculate the new start and end datetimes based on the provided update fields and current datetimes (and the allDay value)
         current_start_datetime = datetime.fromisoformat(event_item['startDate']).replace(tzinfo=tz)
@@ -373,6 +390,10 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
                 }
                 updated_event = {**event_item, **updated_fields}
+                validated_updated_event = EventModel.model_validate(updated_event)
+                updated_event = _normalize_event_dump(
+                    validated_updated_event.model_dump(mode="python", include=set(updated_event.keys()))
+                )
                 # save to DynamoDB
                 ddb_event_item= {k: serializer.serialize(v) for k, v in updated_event.items()}
                 ddb_client.put_item(TableName='Events', Item=ddb_event_item)
@@ -454,6 +475,10 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
                 }
                 updated_event = {**event_item, **updated_fields}
+                validated_updated_event = EventModel.model_validate(updated_event)
+                updated_event = _normalize_event_dump(
+                    validated_updated_event.model_dump(mode="python", include=set(updated_event.keys()))
+                )
                 # save to DynamoDB
                 ddb_event_item= {k: serializer.serialize(v) for k, v in updated_event.items()}
                 ddb_client.put_item(TableName='Events', Item=ddb_event_item)
@@ -480,6 +505,10 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                     "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
             }
             updated_event = {**event_item, **updated_fields}
+            validated_updated_event = EventModel.model_validate(updated_event)
+            updated_event = _normalize_event_dump(
+                validated_updated_event.model_dump(mode="python", include=set(updated_event.keys()))
+            )
             # save to DynamoDB
             ddb_event_item= {k: serializer.serialize(v) for k, v in updated_event.items()}
             ddb_client.put_item(TableName='Events', Item=ddb_event_item)

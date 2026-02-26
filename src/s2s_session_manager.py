@@ -18,8 +18,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from repeating_event_config_model import HabitIndexModel, RepeatingEventConfigModel
-import utils
 from s2s_events import S2sEvent
 from tools.create_event_tool import create_event
 from tools.delete_event_tool import delete_event

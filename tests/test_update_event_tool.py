@@ -180,12 +180,6 @@ async def test_update_repeating_unsaved_timed_event_to_all_day_this_event_only(m
     }
     monkeypatch.setattr(s2s_session_manager, "opensearch_client", Mock(search=Mock(return_value={"hits": {"total": {"value": 1}, "hits": [habit_hit]}})))
 
-    # prepare cfg returned by HabitIndexModel.model_validate / RepeatingEventConfigModel.model_validate
-    #monkeypatch.setattr(s2s_session_manager.HabitIndexModel, "model_validate", Mock(return_value=cfg))
-    #monkeypatch.setattr(s2s_session_manager.RepeatingEventConfigModel, "model_validate", Mock(return_value=cfg))
-
-    # ensure utils reports the habit repeats on the target day
-    #monkeypatch.setattr(s2s_session_manager.utils, "isRepeatingOnDay", Mock(return_value=True))
     cfg = {        
         "userId": "test-user",
         "id": "hid",
@@ -286,12 +280,6 @@ async def test_update_repeating_unsaved_all_day_event_this_event_only(monkeypatc
     }
     monkeypatch.setattr(s2s_session_manager, "opensearch_client", Mock(search=Mock(return_value={"hits": {"total": {"value": 1}, "hits": [habit_hit]}})))
 
-    # prepare cfg returned by HabitIndexModel.model_validate / RepeatingEventConfigModel.model_validate
-    #monkeypatch.setattr(s2s_session_manager.HabitIndexModel, "model_validate", Mock(return_value=cfg))
-    #monkeypatch.setattr(s2s_session_manager.RepeatingEventConfigModel, "model_validate", Mock(return_value=cfg))
-
-    # ensure utils reports the habit repeats on the target day
-    #monkeypatch.setattr(s2s_session_manager.utils, "isRepeatingOnDay", Mock(return_value=True))
     cfg = {        
         "userId": "test-user",
         "id": "hid",
@@ -389,12 +377,6 @@ async def test_update_repeating_unsaved_all_day_to_timed_event_this_event_only(m
     }
     monkeypatch.setattr(s2s_session_manager, "opensearch_client", Mock(search=Mock(return_value={"hits": {"total": {"value": 1}, "hits": [habit_hit]}})))
 
-    # prepare cfg returned by HabitIndexModel.model_validate / RepeatingEventConfigModel.model_validate
-    #monkeypatch.setattr(s2s_session_manager.HabitIndexModel, "model_validate", Mock(return_value=cfg))
-    #monkeypatch.setattr(s2s_session_manager.RepeatingEventConfigModel, "model_validate", Mock(return_value=cfg))
-
-    # ensure utils reports the habit repeats on the target day
-    #monkeypatch.setattr(s2s_session_manager.utils, "isRepeatingOnDay", Mock(return_value=True))
     cfg = {        
         "userId": "test-user",
         "id": "hid",

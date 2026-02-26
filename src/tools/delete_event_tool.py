@@ -7,6 +7,7 @@ import logging
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from repeating_event_config_model import HabitIndexModel
+from event_model import EventIndexModel
 import utils
 
 
@@ -209,7 +210,8 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
       
       if target_doc:
           os_id = target_doc['_id']
-          eventId = target_doc['_source']['eventId']
+          target_event = EventIndexModel.model_validate(target_doc['_source'])
+          eventId = target_event.id
           habitId = target_doc['_source'].get('habitId', None)
           if habitId:
               if event_details.get("this_event_only", False):
@@ -220,7 +222,7 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                   )
                   return {"result": f"Successfully deleted only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
               elif event_details.get("this_and_future_events", False):
-                  new_stop_date = datetime.fromisoformat(target_doc['_source']['startDate']).date()
+                  new_stop_date = target_event.startDate.date()
                   # update the habit to set stopDate in DynamoDB and OpenSearch
                   update_expression = "SET stopDate = :sd"
                   expression_attribute_values = {":sd": serializer.serialize(utils._to_dynamodb_compatible(new_stop_date))}
