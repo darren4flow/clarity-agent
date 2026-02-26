@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from repeating_event_config_model import HabitIndexModel
+from models.repeating_event_config_model import HabitIndexModel
 
 # Configure logging
 logger = logging.getLogger(__name__)

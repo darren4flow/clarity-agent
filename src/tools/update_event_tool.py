@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from repeating_event_config_model import HabitIndexModel, RepeatingEventConfigModel
-from event_model import EventIndexModel, EventModel
+from models.repeating_event_config_model import HabitIndexModel, RepeatingEventConfigModel
+from models.event_model import EventIndexModel, EventModel
 import utils
 
 # Configure logging

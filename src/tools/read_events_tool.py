@@ -6,8 +6,8 @@ from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from repeating_event_config_model import HabitIndexModel
-from event_model import EventIndexModel
+from models.repeating_event_config_model import HabitIndexModel
+from models.event_model import EventIndexModel
 import utils
 
 # Configure logging
