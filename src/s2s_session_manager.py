@@ -3,6 +3,7 @@ import json
 import warnings
 import uuid
 import logging
+from decimal import Decimal
 from aws_sdk_bedrock_runtime.client import BedrockRuntimeClient, InvokeModelWithBidirectionalStreamOperationInput
 from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInputChunk, BidirectionalInputPayloadPart, ValidationException
 from aws_sdk_bedrock_runtime.config import Config
@@ -29,6 +30,16 @@ warnings.filterwarnings("ignore")
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+def _json_default(value):
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, set):
+        return list(value)
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
 
 ddb_client = boto3.client('dynamodb', region_name='us-east-1')
 serializer = TypeSerializer()
@@ -392,10 +403,10 @@ class S2sSessionManager:
             await self.output_queue.put(tool_start_event_copy)
             
             # Send tool result event
-            if isinstance(toolResult, dict):
-                content_json_string = json.dumps(toolResult)
-            else:
+            if isinstance(toolResult, str):
                 content_json_string = toolResult
+            else:
+                content_json_string = json.dumps(toolResult, default=_json_default)
 
             tool_result_event = S2sEvent.text_input_tool(prompt_name, toolContent, content_json_string)
             logger.debug(f"Tool result: {tool_result_event}")
