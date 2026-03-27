@@ -24,6 +24,7 @@ from tools.create_event_tool import create_event
 from tools.delete_event_tool import delete_event
 from tools.update_event_tool import update_event
 from tools.read_events_tool import read_events
+from tools.open_event_tool import open_event
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -458,6 +459,9 @@ class S2sSessionManager:
                 result = read_events(ddb_client, self.user_id, content, self.timezone)
             elif toolName == "update_event":
                 result = update_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
+            elif toolName == "open_event":
+                result = open_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
+                print(f"Open event result: {result}")
             if not result:
                 result = {"result": "no result found"}
 

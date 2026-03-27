@@ -97,7 +97,7 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
                 habitId = matches[0]['_source']['habitId']
                 ddb_habit_item = ddb_client.get_item(
                     TableName='Habits',
-                    Key={'userId': {'S': cfg.userId}, 'id': {'S': cfg.id}}
+                    Key={'userId': {'S': cfg.userId}, 'id': {'S': habitId}}
                 )
                 if not ddb_habit_item.get('Item'):
                     return {"result": f"Could not find the recurring event config in the database for title '{event_title}'."}
