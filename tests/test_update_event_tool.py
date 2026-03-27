@@ -9,7 +9,8 @@ from unittest.mock import Mock
 from types import SimpleNamespace
 import s2s_session_manager
 from s2s_session_manager import S2sSessionManager
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 import utils
 from utils import get_utc_day_bounds
@@ -23,6 +24,41 @@ async def test_getdatetool_returns_timezone():
     res = await s.processToolUse("getDateTool", {})
     assert isinstance(res, dict)
     assert "in UTC" in res["result"]
+
+
+@pytest.mark.asyncio
+async def test_handle_tool_processing_serializes_decimal_and_date(monkeypatch):
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="u", timezone="UTC")
+
+    async def fake_process_tool_use(tool_name, tool_use_content):
+        return {
+            "result": "ok",
+            "updated_event": {
+                "notifications": [{"timeBefore": Decimal("0"), "id": "n1", "timeUnit": "minute"}]
+            },
+            "new_exception_dates": [date(2026, 3, 16)],
+        }
+
+    sent_events = []
+
+    async def fake_send_raw_event(event):
+        sent_events.append(event)
+
+    monkeypatch.setattr(s, "processToolUse", fake_process_tool_use)
+    monkeypatch.setattr(s, "send_raw_event", fake_send_raw_event)
+
+    await s._handle_tool_processing("prompt-1", "update_event", {"content": "{}"}, "tool-use-1")
+
+    assert len(sent_events) == 3
+    assert s.output_queue.qsize() == 3
+
+    output_events = [await s.output_queue.get() for _ in range(3)]
+    tool_result_event = next(e for e in output_events if "toolResult" in e.get("event", {}))
+    payload = tool_result_event["event"]["toolResult"]["content"]
+
+    parsed_payload = json.loads(payload)
+    assert parsed_payload["updated_event"]["notifications"][0]["timeBefore"] == 0
+    assert parsed_payload["new_exception_dates"][0] == "2026-03-16"
 
 @pytest.mark.asyncio
 async def test_create_event_calls_ddb_put_item(monkeypatch):
