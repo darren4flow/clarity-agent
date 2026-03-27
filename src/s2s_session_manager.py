@@ -18,6 +18,8 @@ from requests_aws4auth import AWS4Auth
 import sys
 from pathlib import Path
 
+from tools.update_event_content_tool import update_event_content
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s2s_events import S2sEvent
 from tools.create_event_tool import create_event
@@ -90,6 +92,8 @@ class S2sSessionManager:
         self.toolUseContent = ""
         self.toolUseId = ""
         self.toolName = ""
+        
+        self.open_event_id = None  # To track open event for calendar tools
         
         # Track active tool processing tasks
         self.tool_processing_tasks = set()
@@ -461,7 +465,8 @@ class S2sSessionManager:
                 result = update_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "open_event":
                 result = open_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
-                print(f"Open event result: {result}")
+            elif toolName == "update_event_content":
+                result = update_event_content(ddb_client, bedrock_client, self.user_id, content, self.timezone, self.open_event_id)
             if not result:
                 result = {"result": "no result found"}
 

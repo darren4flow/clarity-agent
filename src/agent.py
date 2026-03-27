@@ -402,7 +402,7 @@ async def websocket_handler(websocket: WebSocket):
                         break
 
                     event_type = list(data["event"].keys())[0]
-
+                    
                     # Handle session start - create new stream manager
                     if event_type == "sessionStart":
                         logger.info("Starting new session")
@@ -474,6 +474,14 @@ async def websocket_handler(websocket: WebSocket):
                             stream_manager.audio_content_name = data["event"][
                                 "contentStart"
                             ]["contentName"]
+                        elif (event_type == "clientEvent" and data["event"]["clientEvent"].get("name") == "event_opened"):
+                            stream_manager.open_event_id = data["event"]["clientEvent"]["payload"]["eventId"]
+                            logger.info(f"👉Set opened event ID: {stream_manager.open_event_id}")
+                            continue
+                        elif (event_type == "clientEvent" and data["event"]["clientEvent"].get("name") == "event_closed"):
+                            stream_manager.open_event_id = None
+                            logger.info(f"👉Cleared opened event ID due to event_closed")
+                            continue
 
                         # Handle audio input separately (queue-based processing)
                         if event_type == "audioInput":
