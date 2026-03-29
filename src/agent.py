@@ -402,7 +402,7 @@ async def websocket_handler(websocket: WebSocket):
                         break
 
                     event_type = list(data["event"].keys())[0]
-                    
+
                     # Handle session start - create new stream manager
                     if event_type == "sessionStart":
                         logger.info("Starting new session")

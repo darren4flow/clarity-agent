@@ -48,6 +48,7 @@ ddb_client = boto3.client('dynamodb', region_name='us-east-1')
 serializer = TypeSerializer()
 deserializer = TypeDeserializer()
 bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
+lambda_client = boto3.client('lambda', region_name='us-east-1')
 
 # Initialize OpenSearch client
 os_host = "search-clarity-domain-act5b626lr54k4h722hub6uxhe.us-east-1.es.amazonaws.com"
@@ -466,7 +467,7 @@ class S2sSessionManager:
             elif toolName == "open_event":
                 result = open_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "update_event_content":
-                result = update_event_content(ddb_client, bedrock_client, self.user_id, content, self.timezone, self.open_event_id)
+                result = update_event_content(ddb_client, lambda_client, self.user_id, content, self.timezone, self.open_event_id)
             if not result:
                 result = {"result": "no result found"}
 
