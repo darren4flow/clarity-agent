@@ -51,11 +51,9 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
         "query": {
             "bool": {
                 "filter": filters,
-                "should": [
-                    {"match": {"title": {"query": event_title, "fuzziness": "AUTO"}}},
+                "must": [
                     {"knn": {"title_vector": {"vector": query_vector, "k": 5}}},
-                ],
-                "minimum_should_match": 1,
+                ]
             }
         }
     }
@@ -68,7 +66,7 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
     unfiltered_habit_hits = opensearch_habits_response['hits']['hits']
     habit_hits = []
     for hit in unfiltered_habit_hits:
-        if hit['_score'] >= 1.0:  # filter out low relevance matches
+        if hit['_score'] >= 0.8:  # filter out low relevance matches
             habit_hits.append(hit)
         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']}")
         
@@ -154,7 +152,7 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
     logger.info(f"OpenSearch returned {len(unfiltered_hits)} hits for event open search")
     hits = []
     for hit in unfiltered_hits:
-        if hit['_score'] >= 1.0:  # filter out low relevance matches
+        if hit['_score'] >= 0.8:  # filter out low relevance matches
             hits.append(hit)
         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
     total_found = len(hits)
@@ -173,14 +171,14 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
     if total_found == 1:
         # exact match
         target_doc = hits[0]
-        logger.info(f"Single matching event found for open: {target_doc}")
+        logger.info(f"Single matching event found for open: {target_doc['_source']['title']}")
     elif start_date and start_time:
         # filter by start date if provided
         search_dt = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
         for hit in hits:
             if hit['_source']['startDate'] == search_dt.isoformat():
                 target_doc = hit
-                logger.info(f"Matching event found for open with start datetime: {target_doc}")
+                logger.info(f"Matching event found for open with start datetime: {target_doc['_source']['title']}")
                 break
         if not target_doc:
             return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {search_dt.isoformat()}."}
@@ -195,7 +193,7 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
         for hit in hits:
             if hit['_source']['startDate'] == search_dt.isoformat():
                 target_doc = hit
-                logger.info(f"Matching event found for open with start datetime: {target_doc}")
+                logger.info(f"Matching event found for open with start datetime: {target_doc['_source']['title']}")
                 break
         if not target_doc:
             return {"result": f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."}

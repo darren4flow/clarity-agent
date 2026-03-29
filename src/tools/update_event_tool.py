@@ -60,11 +60,9 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
         "query": {
             "bool": {
                 "filter": filters,
-                "should": [
-                    {"match": {"title": {"query": event_title, "fuzziness": "AUTO"}}},
+                "must": [
                     {"knn": {"title_vector": {"vector": query_vector, "k": 5}}},
                 ],
-                "minimum_should_match": 1,
             }
         }
     }
@@ -77,7 +75,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
     unfiltered_habit_hits = opensearch_habits_response['hits']['hits']
     habit_hits = []
     for hit in unfiltered_habit_hits:
-        if hit['_score'] >= 1.0:  # filter out low relevance matches
+        if hit['_score'] >= 0.8:  # filter out low relevance matches
             habit_hits.append(hit)
         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']}")
         
@@ -281,7 +279,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
     logger.info(f"OpenSearch returned {len(unfiltered_hits)} hits for event update search")
     hits = []
     for hit in unfiltered_hits:
-        if hit['_score'] >= 1.0:  # filter out low relevance matches
+        if hit['_score'] >= 0.8:  # filter out low relevance matches
             hits.append(hit)
         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
     total_found = len(hits)
