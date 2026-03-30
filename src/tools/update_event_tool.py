@@ -125,9 +125,9 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         end_datetime,
                         new_start_date,
                         new_start_time,
-                        new_end_date = to_update_fields.get("new_end_date", None),
+                        new_end_date = date.fromisoformat(to_update_fields.get("new_end_date", None)) if to_update_fields.get("new_end_date", None) else None,
                         new_end_time_str= to_update_fields.get("new_end_time", None),
-                        new_length_minutes= to_update_fields.get("new_length_minutes", None)
+                        new_length_minutes= int(to_update_fields.get("new_length_minutes", None)) if to_update_fields.get("new_length_minutes", None) else None
                 )
                 if new_end_datetime is None:
                     return {"result": "Unable to determine new end datetime for the updated event occurrence."}
@@ -366,9 +366,9 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                 current_end_datetime,
                 new_start_date,
                 new_start_time,
-                new_end_date = to_update_fields.get("new_end_date", None),
+                new_end_date = date.fromisoformat(to_update_fields.get("new_end_date", None)) if to_update_fields.get("new_end_date", None) else None,
                 new_end_time_str= to_update_fields.get("new_end_time", None),
-                new_length_minutes= to_update_fields.get("new_length_minutes", None)
+                new_length_minutes= int(to_update_fields.get("new_length_minutes", None)) if to_update_fields.get("new_length_minutes", None) else None
         )
         if new_end_datetime is None:
             return {"result": "Unable to determine new end datetime for the updated event occurrence."}

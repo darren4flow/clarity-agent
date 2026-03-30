@@ -4,7 +4,7 @@ anyio==4.12.0
 attrs==25.4.0
 autopep8==2.3.2
 aws-sdk-signers==0.1.0
-aws_sdk_bedrock_runtime==0.2.0
+aws_sdk_bedrock_runtime==0.4.0
 awscrt==0.28.4
 bedrock-agentcore==1.1.1
 bedrock-agentcore-starter-toolkit==0.2.4
@@ -71,11 +71,11 @@ ruamel.yaml.clib==0.2.15
 s3transfer==0.16.0
 shellingham==1.5.4
 six==1.17.0
-smithy-aws-core==0.2.0
-smithy-aws-event-stream==0.2.0
-smithy-core==0.2.0
-smithy-http==0.3.0
-smithy-json==0.2.0
+smithy-aws-core==0.4.0
+smithy-aws-event-stream==0.2.1
+smithy-core==0.3.0
+smithy-http==0.3.1
+smithy-json==0.2.1
 starlette==0.50.0
 toml==0.10.2
 typer==0.20.0
