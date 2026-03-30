@@ -99,6 +99,23 @@ class S2sSessionManager:
         # Track active tool processing tasks
         self.tool_processing_tasks = set()
 
+    async def _emit_fatal_stream_error(self, message, code="BEDROCK_STREAM_FATAL"):
+        """Emit a terminal stream error for websocket forwarding logic."""
+        try:
+            await self.output_queue.put(
+                {
+                    "event": {
+                        "error": {
+                            "message": message,
+                            "code": code,
+                            "fatal": True,
+                        }
+                    }
+                }
+            )
+        except Exception:
+            logger.error("Failed to enqueue fatal stream error event", exc_info=True)
+
     def _initialize_client(self):
         """
         Initialize the Bedrock client using EnvironmentCredentialsResolver.
@@ -360,6 +377,10 @@ class S2sSessionManager:
                     logger.info(f"Ignoring response AttributeError during shutdown: {e}")
                     break
                 logger.error(f"Unexpected response attribute error: {e}", exc_info=True)
+                await self._emit_fatal_stream_error(
+                    f"Unexpected response attribute error: {e}",
+                    code="BEDROCK_STREAM_ATTRIBUTE_ERROR",
+                )
                 break
 
             except json.JSONDecodeError as ex:
@@ -383,6 +404,9 @@ class S2sSessionManager:
                     continue
                 else:
                     logger.error(f"Error receiving response from Bedrock: {e}", exc_info=True)
+                    await self._emit_fatal_stream_error(
+                        f"Stream error from Bedrock: {error_str}",
+                    )
                     # Only break on serious errors
                     break
 
@@ -468,6 +492,18 @@ class S2sSessionManager:
                 result = open_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "update_event_content":
                 result = update_event_content(ddb_client, lambda_client, self.user_id, content, self.timezone, self.open_event_id)
+            elif toolName == "close_event":
+                if self.open_event_id:
+                    self.open_event_id = None
+                    result = {
+                        "result": "Closed the event.",
+                        "tool_name": "close_event"
+                    }
+                else:
+                    result = {
+                        "result": "No event is currently open. Please open an event before attempting to close it.",
+                        "tool_name": "close_event"
+                    }
             if not result:
                 result = {"result": "no result found"}
 

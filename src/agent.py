@@ -425,7 +425,6 @@ async def websocket_handler(websocket: WebSocket):
 
                         # Initialize the Bedrock stream
                         await stream_manager.initialize_stream()
-                        logger.info("Stream initialized successfully")
 
                         # Start a task to forward responses from Bedrock to the WebSocket
                         forward_task = asyncio.create_task(
@@ -653,8 +652,28 @@ async def forward_responses(websocket: WebSocket, stream_manager):
     """Forward responses from Bedrock to the WebSocket client."""
     try:
         while True:
-            # Get next response from the output queue
-            response = await stream_manager.output_queue.get()
+            # Avoid hanging forever if the upstream stream died unexpectedly.
+            queue_get_task = asyncio.create_task(stream_manager.output_queue.get())
+            try:
+                response = await asyncio.wait_for(queue_get_task, timeout=1.0)
+            except asyncio.TimeoutError:
+                queue_get_task.cancel()
+                try:
+                    await queue_get_task
+                except asyncio.CancelledError:
+                    pass
+                if not stream_manager.is_active:
+                    if getattr(stream_manager, "_session_end_sent", False):
+                        logger.info("Stream ended normally, stopping forward task")
+                        break
+                    logger.warning("Stream became inactive unexpectedly; closing websocket")
+                    if (
+                        websocket.client_state != WebSocketState.DISCONNECTED
+                        and websocket.application_state != WebSocketState.DISCONNECTED
+                    ):
+                        await websocket.close(code=1011, reason="Upstream stream failed")
+                    break
+                continue
 
             # Send to WebSocket
             try:
@@ -684,6 +703,18 @@ async def forward_responses(websocket: WebSocket, stream_manager):
                     chunk_size = len(chunk_json.encode("utf-8"))
 
                     await websocket.send_text(chunk_json)
+
+                    error_data = event_chunk.get("event", {}).get("error", {})
+                    if error_data.get("fatal") is True:
+                        logger.error(
+                            f"Fatal stream error forwarded to client: {error_data.get('code', 'UNKNOWN')}"
+                        )
+                        if (
+                            websocket.client_state != WebSocketState.DISCONNECTED
+                            and websocket.application_state != WebSocketState.DISCONNECTED
+                        ):
+                            await websocket.close(code=1011, reason="Upstream stream failed")
+                        return
 
                     if len(events_to_send) > 1:
                         logger.debug(
