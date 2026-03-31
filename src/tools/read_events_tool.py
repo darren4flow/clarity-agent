@@ -6,14 +6,27 @@ from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from models.repeating_event_config_model import HabitIndexModel
-from models.event_model import EventIndexModel
+from models.repeating_event_config_model import RepeatingEventConfigModel
+from models.event_model import EventModel
+from models.prosemirror_schema import schema
+from prosemirror.model import Node, DOMSerializer
 import utils
 
 # Configure logging
 logger = logging.getLogger(__name__)
 serializer = TypeSerializer()
 deserializer = TypeDeserializer()
+
+
+def serialize_content_to_html(content):
+    try:
+        doc = Node.from_json(schema, content)
+        serializer = DOMSerializer.from_schema(schema)
+        fragment = serializer.serialize_fragment(doc.content)
+        return str(fragment)
+    except Exception as e:
+        logger.error(f"Error serializing content to HTML: {e}", exc_info=True)
+        return ""
 
 def read_events(ddb_client, user_id, content, timezone):
   try:
@@ -100,7 +113,7 @@ def read_events(ddb_client, user_id, content, timezone):
     for item in event_items:
         event_item = {k: deserializer.deserialize(v) for k, v in item.items()}
         try:
-            event = EventIndexModel.model_validate(event_item)
+            event = EventModel.model_validate(event_item)
         except Exception as e:
             logger.warning(f"Skipping event due to validation error: {e}")
             continue
@@ -108,10 +121,13 @@ def read_events(ddb_client, user_id, content, timezone):
         end_date_str = event.endDate.isoformat()
         if not start_date_str or not end_date_str:
             continue
+        
         results.append({
             "title": event.description or "",
             "startDate": start_date_str,
-            "endDate": end_date_str
+            "endDate": end_date_str,
+            "content": serialize_content_to_html(event.content) if event.content else "",
+            "done": event.done
         })
 
     habits_response = ddb_client.query(
@@ -123,7 +139,7 @@ def read_events(ddb_client, user_id, content, timezone):
     for item in habit_items:
         habit_item = {k: deserializer.deserialize(v) for k, v in item.items()}
         try:
-            cfg = HabitIndexModel.model_validate(habit_item)
+            cfg = RepeatingEventConfigModel.model_validate(habit_item)
         except Exception as e:
             logger.warning(f"Skipping habit due to validation error: {e}")
             continue
@@ -145,7 +161,10 @@ def read_events(ddb_client, user_id, content, timezone):
                     results.append({
                         "title": cfg.name,
                         "startDate": start_dt.astimezone(tz).isoformat(),
-                        "endDate": end_dt.astimezone(tz).isoformat()
+                        "endDate": end_dt.astimezone(tz).isoformat(),
+                        "content": serialize_content_to_html(cfg.content) if cfg.content else "",
+                        "done": False
+
                     })
             current_date += timedelta(days=1)
 
