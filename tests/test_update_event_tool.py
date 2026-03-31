@@ -11,6 +11,7 @@ import s2s_session_manager
 from s2s_session_manager import S2sSessionManager
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
+from boto3.dynamodb.types import TypeSerializer
 from zoneinfo import ZoneInfo
 import utils
 from utils import get_utc_day_bounds
@@ -1535,7 +1536,108 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
       "notifications": []
     }
     assert updated_new_event == expected_updated_event
-  
+
+
+@pytest.mark.asyncio
+async def test_update_repeating_saved_event_this_and_future_events_serializes_exception_dates(monkeypatch):
+    """Regression test for date values in exceptionDates when creating new repeat config."""
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")
+
+    payload = {
+        "current_title": "Test Habit",
+        "current_start_date": datetime.now(ZoneInfo("UTC")).date().isoformat(),
+        "this_and_future_events": True,
+        "new_title": "Updated Title",
+        "new_length_minutes": 60,
+        "fixed": True,
+        "priority": "critical"
+    }
+
+    embed_body = Mock()
+    embed_body.read = Mock(return_value=json.dumps({"embedding": [0.1, 0.2]}).encode("utf-8"))
+    monkeypatch.setattr(s2s_session_manager, "bedrock_client", Mock(invoke_model=Mock(return_value={"body": embed_body})))
+
+    habit_hit = {
+        "_id": "hid",
+        "_score": 1,
+        "_source": {
+            "userId": "test-user",
+            "habitId": "hid",
+            "title": "Test Habit",
+            "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+            "stopDate": None,
+            "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+            "frequency": "1D",
+            "days": [],
+            "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],
+            "length": 15
+        }
+    }
+    habits_resp = {"hits": {"total": {"value": 1}, "hits": [habit_hit]}}
+    event_data = {
+        "eventId": "eid",
+        "userId": "test-user",
+        "habitId": "hid",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "title": "Test Habit",
+        "done": False,
+        "allDay": False,
+        "type": "personal",
+        "fixed": False,
+        "content": None,
+        "notifications": [],
+        "priority": None
+    }
+    events_hit = {
+        "_id": "eid",
+        "_source": event_data,
+        "_score": 1
+    }
+    events_resp = {"hits": {"total": {"value": 1}, "hits": [events_hit]}}
+    mock_os = Mock()
+    mock_os.search.side_effect = [habits_resp, events_resp]
+    monkeypatch.setattr(s2s_session_manager, "opensearch_client", mock_os)
+
+    ddb_event_data = event_data.copy()
+    ddb_event_data['id'] = ddb_event_data.pop('eventId')
+    ddb_event_data['description'] = ddb_event_data.pop('title')
+
+    habit_data = {
+        "userId": "test-user",
+        "id": "hid",
+        "startTime": {"timezone": "UTC", "hour": 10, "minute": 0},
+        "exceptionDates": [datetime.now(ZoneInfo("UTC")).date().isoformat()],
+        "length": 15,
+        "allDay": False,
+        "type": "personal",
+        "fixed": False,
+        "priority": None,
+        "content": None,
+        "notifications": [],
+        "name": "Test Habit",
+        "creationDate": (datetime.now(ZoneInfo("UTC")).date() - timedelta(days=1)).isoformat(),
+        "frequency": "1D",
+        "days": [],
+        "stopDate": None,
+        "prevVersionHabitId": None
+    }
+
+    mock_ddb = Mock()
+    mock_ddb.get_item = Mock(side_effect=[{"Item": ddb_event_data}, {"Item": habit_data}])
+    mock_ddb.update_item = Mock()
+    mock_ddb.put_item = Mock()
+    monkeypatch.setattr(s2s_session_manager, "ddb_client", mock_ddb)
+    monkeypatch.setattr(tools.update_event_tool, "serializer", TypeSerializer())
+    monkeypatch.setattr(tools.update_event_tool, "deserializer", Mock(deserialize=lambda v: v))
+
+    res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+
+    assert "Successfully updated this and future occurrences " in res["result"]
+    habits_put_calls = [c for c in mock_ddb.put_item.call_args_list if c.kwargs.get("TableName") == "Habits"]
+    assert len(habits_put_calls) == 1
+    assert habits_put_calls[0].kwargs["Item"]["exceptionDates"]["L"][0]["S"] == datetime.now(ZoneInfo("UTC")).date().isoformat()
+
 @pytest.mark.asyncio
 async def test_update_nonrepeating_event(monkeypatch):
     s = S2sSessionManager(region="us-east-1", model_id="m", user_id="test-user", timezone="UTC")

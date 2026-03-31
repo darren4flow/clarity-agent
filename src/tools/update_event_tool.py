@@ -32,7 +32,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
     to_update_fields = {k: v for k, v in event_details.items() if k not in ["current_title", "current_start_date", "current_start_time", "this_event_only", "this_and_future_events"] and v is not None}
     event_title = event_details.get("current_title")
     
-    start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else None
+    start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else datetime.now(tz).date()
     start_time = event_details.get("current_start_time", None)
     
     new_start_date = date.fromisoformat(to_update_fields.get('new_start_date', None)) if to_update_fields.get('new_start_date', None) else None
@@ -231,7 +231,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         },
                         "length": to_update_fields.get("new_length_minutes", cfg.length),
                     }
-                    ddb_habit_item= {k: serializer.serialize(v) for k, v in new_repeat_config.items()}
+                    ddb_habit_item= {k: serializer.serialize(utils._to_dynamodb_compatible(v)) for k, v in new_repeat_config.items()}
                     ddb_client.put_item(TableName='Habits', Item=ddb_habit_item)
                     logger.info(f"Created new repeating event config in DynamoDB: {new_repeat_config}")
                     
@@ -298,7 +298,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
     if total_found == 1:
         # exact match
         target_doc = hits[0]
-        logger.info(f"Single matching event found for update: {target_doc}")
+        logger.info(f"Single matching event found for update: {target_doc['_source']['title']}")
     elif start_date and start_time:
         # filter by start date if provided
         search_dt = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
@@ -455,7 +455,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "length": to_update_fields.get("new_length_minutes", cfg.length),
                 }
                 # save new repeat config to DynamoDB
-                new_ddb_config_item= {k: serializer.serialize(v) for k, v in new_repeat_config.items()}
+                new_ddb_config_item= {k: serializer.serialize(utils._to_dynamodb_compatible(v)) for k, v in new_repeat_config.items()}
                 ddb_client.put_item(TableName='Habits', Item=new_ddb_config_item)
                 logger.info(f"Created new repeating event config in DynamoDB: {new_repeat_config}")
                 
