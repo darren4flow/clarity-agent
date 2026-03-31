@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 serializer = TypeSerializer()
 deserializer = TypeDeserializer()
 
-def create_event(ddb_client, user_id, content, timezone):
+def create_event(ddb_client, lambda_client, user_id, content, timezone):
   try:
     tz = ZoneInfo(timezone)
     event_details = json.loads(content)
@@ -54,7 +54,7 @@ def create_event(ddb_client, user_id, content, timezone):
         "id": str(uuid.uuid4()),
         "userId": user_id,
         "name": event_title,
-        "content": None,
+        "content": utils.generate_update_content(lambda_client, user_id, event_details.get("tasks_content_prompt"), None) if event_details.get("tasks_content_prompt") else None,
         "creationDate": datetime.now(tz).strftime('%Y-%m-%d'), # YYYY-MM-DD in user's timezone
         "type": event_details.get("type", "personal"),
         "priority": event_details.get("priority", None),
@@ -88,7 +88,7 @@ def create_event(ddb_client, user_id, content, timezone):
         "type": event_details.get("type", "personal"),
         "fixed": event_details.get("fixed", False),
         "priority": event_details.get("priority", None),
-        "content": None,
+        "content": utils.generate_update_content(lambda_client, user_id, event_details.get("tasks_content_prompt"), None) if event_details.get("tasks_content_prompt") else None,
         "startDate": start_datetime.isoformat(),
         "endDate": end_datetime.isoformat(),
         "notifications": notifications

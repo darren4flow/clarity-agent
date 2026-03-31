@@ -481,7 +481,7 @@ class S2sSessionManager:
                     + f" in {self.timezone}"
                 )}
             if toolName == "create_event":
-                result = create_event(ddb_client, self.user_id, content, self.timezone)
+                result = create_event(ddb_client, lambda_client, self.user_id, content, self.timezone)
             elif toolName == "delete_event":
                 result = delete_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "read_events":
