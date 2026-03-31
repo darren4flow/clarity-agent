@@ -487,7 +487,7 @@ class S2sSessionManager:
             elif toolName == "read_events":
                 result = read_events(ddb_client, self.user_id, content, self.timezone)
             elif toolName == "update_event":
-                result = update_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
+                result = update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "open_event":
                 result = open_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "update_event_content":

@@ -23,7 +23,10 @@ def _normalize_event_dump(event_dict):
             event_dict[date_key] = event_dict[date_key].isoformat()
     return event_dict
 
-def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content, timezone):
+
+    
+
+def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, user_id, content, timezone):
   try:
     tz = ZoneInfo(timezone)
     logger.info(f"Processing update_event with content: {content}")
@@ -162,7 +165,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "type": to_update_fields.get("type", cfg.eventType),
                         "fixed": to_update_fields.get("fixed", cfg.fixed),
                         "priority": to_update_fields.get("priority", cfg.priority),
-                        "content": to_update_fields.get("content", cfg.content),
+                        "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], cfg.content) if to_update_fields.get("body_update_prompt") else cfg.content,
                         "startDate": new_start_datetime.isoformat(),
                         "endDate": new_end_datetime.isoformat(),
                         "notifications": to_update_fields.get("notifications", cfg.notifications) 
@@ -212,7 +215,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "id": str(uuid.uuid4()),
                         "userId": cfg.userId,
                         "name": to_update_fields.get("new_title", cfg.name),
-                        "content": to_update_fields.get("content", cfg.content),
+                        "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], cfg.content) if to_update_fields.get("body_update_prompt") else cfg.content,
                         "creationDate": new_start_datetime.date().strftime('%Y-%m-%d'),
                         "type": to_update_fields.get("type", cfg.eventType),
                         "priority": to_update_fields.get("priority", cfg.priority),
@@ -382,7 +385,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "type": to_update_fields.get("type", event_item.get("type", "personal")),
                         "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                         "priority": to_update_fields.get("priority", event_item.get("priority", None)),
-                        "content": to_update_fields.get("content", event_item.get("content", None)),
+                        "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None),
                         "startDate": new_start_datetime.isoformat(),
                         "endDate": new_end_datetime.isoformat(),
                         "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
@@ -414,6 +417,9 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                 new_stop_date = current_start_datetime.date()
                 cfg.stopDate = new_stop_date
                 
+                # content value to be used for the updated event occurrence and the new repeat config
+                content_value = utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None)
+                
                 # used for unit test
                 updated_repeat_config = {k: serializer.serialize(utils._to_dynamodb_compatible(v))
                                             for k, v in cfg.model_dump().items()
@@ -435,7 +441,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "id": str(uuid.uuid4()),
                         "userId": cfg.userId,
                         "name": to_update_fields.get("new_title", cfg.name),
-                        "content": to_update_fields.get("content", cfg.content),
+                        "content": content_value,
                         "creationDate": new_start_datetime.strftime('%Y-%m-%d'),
                         "type": to_update_fields.get("type", cfg.eventType),
                         "priority": to_update_fields.get("priority", cfg.priority),
@@ -467,7 +473,7 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                         "type": to_update_fields.get("type", event_item.get("type", "personal")),
                         "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                         "priority": to_update_fields.get("priority", event_item.get("priority", None)),
-                        "content": to_update_fields.get("content", event_item.get("content", None)),
+                        "content": content_value,
                         "startDate": new_start_datetime.isoformat(),
                         "endDate": new_end_datetime.isoformat(),
                         "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
@@ -497,11 +503,11 @@ def update_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                     "type": to_update_fields.get("type", event_item.get("type", "personal")),
                     "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                     "priority": to_update_fields.get("priority", event_item.get("priority", None)),
-                    "content": to_update_fields.get("content", event_item.get("content", None)),
+                    "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None),
                     "startDate": new_start_datetime.isoformat(),
                     "endDate": new_end_datetime.isoformat(),
                     "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
-            }
+            }   
             updated_event = {**event_item, **updated_fields}
             validated_updated_event = EventModel.model_validate(updated_event)
             updated_event = _normalize_event_dump(

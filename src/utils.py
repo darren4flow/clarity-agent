@@ -4,12 +4,14 @@ from typing import Optional
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
+import json
 import logging
 import re
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from models.repeating_event_config_model import HabitIndexModel
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -540,3 +542,27 @@ def get_utc_day_bounds(local_date: date, timezone_str: str) -> tuple[datetime, d
     local_start = datetime.combine(local_date, time.min).replace(tzinfo=user_tz)
     local_end = local_start + timedelta(days=1)
     return local_start.astimezone(timezone.utc), local_end.astimezone(timezone.utc)
+
+
+def generate_update_content(lambda_client, user_id, prompt, event_content):
+    if event_content is None:
+        event_content = {"content": [{"type": "paragraph"}], "type": "doc"}
+    payload = {
+        "userId": user_id,
+        "prompt": prompt,
+        "content": event_content
+    }
+    logger.info(f"Payload for content update Lambda: {payload}")
+    response = lambda_client.invoke(
+        FunctionName='clarityGenerateEditorContentService',
+        InvocationType='RequestResponse',
+        Payload=json.dumps(payload).encode('utf-8')
+    )
+    raw_payload = response["Payload"].read().decode("utf-8")
+    if response.get("FunctionError"):
+        logger.error(f"Lambda returned an error: {raw_payload}")
+        raise Exception(f"Error from content update Lambda: {raw_payload}")
+    lambda_result = json.loads(raw_payload) if raw_payload else {}
+    result_body = json.loads(lambda_result.get("body", "{}"))
+    logger.info(f"Lambda result for content update: {lambda_result}")
+    return result_body.get("doc", {"content": [{"type": "paragraph"}], "type": "doc"})
