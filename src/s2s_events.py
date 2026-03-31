@@ -87,6 +87,23 @@ class S2sEvent:
           }
         }
       }
+
+  @staticmethod
+  def content_start_user_text(prompt_name, content_name):
+    return {
+        "event":{
+        "contentStart":{
+          "promptName":prompt_name,
+          "contentName":content_name,
+          "type":"TEXT",
+          "interactive":True,
+          "role": "USER",
+          "textInputConfiguration":{
+            "mediaType":"text/plain"
+            }
+          }
+        }
+      }
     
   @staticmethod
   def text_input(prompt_name, content_name, system_prompt=DEFAULT_SYSTEM_PROMPT):

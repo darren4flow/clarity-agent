@@ -15,6 +15,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from s2s_session_manager import S2sSessionManager
+from s2s_events import S2sEvent
 
 # configure logging for stdout
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -30,6 +31,52 @@ CHUNK_SIZE = 1024
 
 # Global variable to track credential refresh task
 credential_refresh_task = None
+
+
+async def send_open_event_context(stream_manager, event_id):
+    """Send hidden context to Nova Sonic about the currently opened event."""
+    prompt_name = getattr(stream_manager, "prompt_name", None)
+    if not prompt_name:
+        return False
+
+    content_name = f"event_context_{int(datetime.now().timestamp() * 1000)}"
+    context_message = f"I currently have this event opened on my device. I just started this conversation and wanted to share this context with you so that you understand to use tools for when an event is already open. DO NOT CLOSE OR OPEN THIS EVENT UNLESS I EXPLICITLY TELL YOU TO. Event ID {event_id} is currently open. Start the conversation with me by only saying 'I see you have an event open' and wait for my response."
+
+
+    await stream_manager.send_raw_event(
+        S2sEvent.content_start_user_text(prompt_name, content_name)
+    )
+    await stream_manager.send_raw_event(
+        S2sEvent.text_input(prompt_name, content_name, context_message)
+    )
+    await stream_manager.send_raw_event(S2sEvent.content_end(prompt_name, content_name))
+    return True
+
+
+async def send_closed_event_context(stream_manager, previously_open_event_id):
+    """Send hidden context to Nova Sonic that no event is currently open."""
+    prompt_name = getattr(stream_manager, "prompt_name", None)
+    if not prompt_name:
+        return False
+
+    content_name = f"event_context_{int(datetime.now().timestamp() * 1000)}"
+    if previously_open_event_id:
+        context_message = (
+            f"I just manually closed the event with Event ID {previously_open_event_id} on my device on purpose. Say 'I see you closed the event'"
+        )
+    else:
+        context_message = (
+            "I just manually closed the currently opened event on my device on purpose. Say 'I see you closed the event'"
+        )
+
+    await stream_manager.send_raw_event(
+        S2sEvent.content_start_user_text(prompt_name, content_name)
+    )
+    await stream_manager.send_raw_event(
+        S2sEvent.text_input(prompt_name, content_name, context_message)
+    )
+    await stream_manager.send_raw_event(S2sEvent.content_end(prompt_name, content_name))
+    return True
 
 
 def get_imdsv2_token():
@@ -314,6 +361,7 @@ async def websocket_handler(websocket: WebSocket):
     user_id = None
     timezone = None
     init_received = False
+    pending_open_event_context = None
     
     try:
         # Main message processing loop
@@ -422,6 +470,7 @@ async def websocket_handler(websocket: WebSocket):
                         stream_manager = S2sSessionManager(
                             model_id="amazon.nova-2-sonic-v1:0", region=aws_region, user_id=user_id, timezone=timezone
                         )
+                        pending_open_event_context = None
 
                         # Initialize the Bedrock stream
                         await stream_manager.initialize_stream()
@@ -466,6 +515,26 @@ async def websocket_handler(websocket: WebSocket):
                             stream_manager.prompt_name = data["event"]["promptStart"][
                                 "promptName"
                             ]
+                            if pending_open_event_context is not None:
+                                if pending_open_event_context.get("is_open"):
+                                    sent = await send_open_event_context(
+                                        stream_manager,
+                                        pending_open_event_context.get("event_id"),
+                                    )
+                                    if sent:
+                                        logger.info(
+                                            "Sent deferred open event context to Nova Sonic"
+                                        )
+                                else:
+                                    sent = await send_closed_event_context(
+                                        stream_manager,
+                                        pending_open_event_context.get("event_id"),
+                                    )
+                                    if sent:
+                                        logger.info(
+                                            "Sent deferred closed event context to Nova Sonic"
+                                        )
+                                pending_open_event_context = None
                         elif (
                             event_type == "contentStart"
                             and data["event"]["contentStart"].get("type") == "AUDIO"
@@ -476,10 +545,37 @@ async def websocket_handler(websocket: WebSocket):
                         elif (event_type == "clientEvent" and data["event"]["clientEvent"].get("name") == "event_opened"):
                             stream_manager.open_event_id = data["event"]["clientEvent"]["payload"]["eventId"]
                             logger.info(f"👉Set opened event ID: {stream_manager.open_event_id}")
+                            sent = await send_open_event_context(
+                                stream_manager, stream_manager.open_event_id
+                            )
+                            if sent:
+                                logger.info("Sent opened event context to Nova Sonic")
+                            else:
+                                pending_open_event_context = {
+                                    "is_open": True,
+                                    "event_id": stream_manager.open_event_id,
+                                }
+                                logger.info(
+                                    "Deferred opened event context until promptStart is available"
+                                )
                             continue
                         elif (event_type == "clientEvent" and data["event"]["clientEvent"].get("name") == "event_closed"):
+                            previous_open_event_id = stream_manager.open_event_id
                             stream_manager.open_event_id = None
                             logger.info(f"👉Cleared opened event ID due to event_closed")
+                            sent = await send_closed_event_context(
+                                stream_manager, previous_open_event_id
+                            )
+                            if sent:
+                                logger.info("Sent closed event context to Nova Sonic")
+                            else:
+                                pending_open_event_context = {
+                                    "is_open": False,
+                                    "event_id": previous_open_event_id,
+                                }
+                                logger.info(
+                                    "Deferred closed event context until promptStart is available"
+                                )
                             continue
 
                         # Handle audio input separately (queue-based processing)
