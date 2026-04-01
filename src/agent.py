@@ -773,6 +773,15 @@ async def forward_responses(websocket: WebSocket, stream_manager):
 
             # Send to WebSocket
             try:
+                if response.get("type") == "end_conversation":
+                    logger.info("Received end_conversation control event, closing websocket")
+                    if (
+                        websocket.client_state != WebSocketState.DISCONNECTED
+                        and websocket.application_state != WebSocketState.DISCONNECTED
+                    ):
+                        await websocket.close(code=1000, reason="Conversation ended")
+                    break
+
                 # Check if event needs to be split
                 event = json.dumps(response)
                 event_size = len(event.encode("utf-8"))

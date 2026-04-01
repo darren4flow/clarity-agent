@@ -1,4 +1,5 @@
 import sys
+import asyncio
 from pathlib import Path
 from xxlimited import new
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"src"))
@@ -25,6 +26,102 @@ async def test_getdatetool_returns_timezone():
     res = await s.processToolUse("getDateTool", {})
     assert isinstance(res, dict)
     assert "in UTC" in res["result"]
+
+
+@pytest.mark.asyncio
+async def test_end_conversation_tool_sets_shutdown_marker():
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="u", timezone="UTC")
+
+    res = await s.processToolUse("end_conversation", {})
+
+    assert res["tool_name"] == "end_conversation"
+    assert res["end_conversation"] is True
+    assert s.end_conversation_requested is True
+
+
+@pytest.mark.asyncio
+async def test_end_conversation_sends_audio_content_end_then_prompt_end_then_session_end(monkeypatch):
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="u", timezone="UTC")
+
+    sent_events = []
+
+    async def fake_send_raw_event(event):
+        sent_events.append(event)
+
+    async def fake_close():
+        return
+
+    monkeypatch.setattr(s, "send_raw_event", fake_send_raw_event)
+    monkeypatch.setattr(s, "close", fake_close)
+    s.is_active = True
+    s.stream = object()
+    s.audio_content_name = "audio-1"
+
+    await s._handle_tool_processing("prompt-1", "end_conversation", {}, "tool-use-1")
+
+    assert len(sent_events) == 6
+    assert "contentStart" in sent_events[0]["event"]
+    assert "toolResult" in sent_events[1]["event"]
+    assert "contentEnd" in sent_events[2]["event"]
+    assert sent_events[2]["event"]["contentEnd"]["contentName"] != "audio-1"
+    assert "contentEnd" in sent_events[3]["event"]
+    assert sent_events[3]["event"]["contentEnd"]["contentName"] == "audio-1"
+    assert "promptEnd" in sent_events[4]["event"]
+    assert "sessionEnd" in sent_events[5]["event"]
+
+
+@pytest.mark.asyncio
+async def test_end_conversation_without_audio_still_sends_prompt_end_then_session_end(monkeypatch):
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="u", timezone="UTC")
+
+    sent_events = []
+
+    async def fake_send_raw_event(event):
+        sent_events.append(event)
+
+    async def fake_close():
+        return
+
+    monkeypatch.setattr(s, "send_raw_event", fake_send_raw_event)
+    monkeypatch.setattr(s, "close", fake_close)
+    s.is_active = True
+    s.stream = object()
+
+    await s._handle_tool_processing("prompt-1", "end_conversation", {}, "tool-use-1")
+
+    assert len(sent_events) == 5
+    assert "contentEnd" in sent_events[2]["event"]
+    assert "promptEnd" in sent_events[3]["event"]
+    assert "sessionEnd" in sent_events[4]["event"]
+
+
+@pytest.mark.asyncio
+async def test_close_skips_current_tool_task_to_avoid_cancel_recursion():
+    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="u", timezone="UTC")
+    s.is_active = True
+
+    class FakeInputStream:
+        async def close(self):
+            return
+
+    s.stream = SimpleNamespace(input_stream=FakeInputStream())
+
+    # Add a separate pending task to verify it is still cancelled by close().
+    extra_task = asyncio.create_task(asyncio.sleep(10))
+
+    try:
+        current_task = asyncio.current_task()
+        s.tool_processing_tasks.add(current_task)
+        s.tool_processing_tasks.add(extra_task)
+
+        await s.close()
+
+        assert extra_task.done()
+        assert extra_task.cancelled()
+    finally:
+        if not extra_task.done():
+            extra_task.cancel()
+            await asyncio.gather(extra_task, return_exceptions=True)
 
 
 @pytest.mark.asyncio

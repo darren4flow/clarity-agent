@@ -93,6 +93,7 @@ class S2sSessionManager:
         self.toolUseContent = ""
         self.toolUseId = ""
         self.toolName = ""
+        self.end_conversation_requested = False
         
         self.open_event_id = None  # To track open event for calendar tools
         
@@ -159,6 +160,7 @@ class S2sSessionManager:
         self.toolUseContent = ""
         self.toolUseId = ""
         self.toolName = ""
+        self.end_conversation_requested = False
         
         # Reset session information
         self.prompt_name = None
@@ -455,9 +457,45 @@ class S2sSessionManager:
             tool_content_end_event_copy = tool_content_end_event.copy()
             tool_content_end_event_copy["timestamp"] = int(datetime.now().timestamp() * 1000)
             await self.output_queue.put(tool_content_end_event_copy)
+
+            if tool_name.lower() == "end_conversation" and self.end_conversation_requested:
+                await self._end_bedrock_conversation(prompt_name)
+                await self.output_queue.put(
+                    {
+                        "type": "end_conversation",
+                        "reason": "Tool requested conversation end",
+                        "timestamp": int(datetime.now().timestamp() * 1000),
+                    }
+                )
             
         except Exception as e:
             logger.error(f"Error in tool processing: {e}", exc_info=True)
+
+    async def _end_bedrock_conversation(self, prompt_name):
+        """Gracefully end the current Bedrock conversation with contentEnd, promptEnd, and sessionEnd."""
+        if self._session_end_sent or not self.stream:
+            await self.close()
+            return
+
+        try:
+            active_prompt_name = prompt_name or self.prompt_name
+
+            # Explicitly end active audio input content before ending prompt/session.
+            if active_prompt_name and self.audio_content_name and self.is_active:
+                await self.send_raw_event(
+                    S2sEvent.content_end(active_prompt_name, self.audio_content_name)
+                )
+
+            if active_prompt_name and self.is_active:
+                await self.send_raw_event(S2sEvent.prompt_end(active_prompt_name))
+
+            if not self._session_end_sent and self.is_active:
+                await self.send_raw_event(S2sEvent.session_end())
+            else:
+                await self.close()
+        except Exception:
+            logger.error("Failed to send graceful end events to Bedrock", exc_info=True)
+            await self.close()
 
     async def processToolUse(self, toolName, toolUseContent):
         """Return the tool result"""
@@ -504,6 +542,13 @@ class S2sSessionManager:
                         "result": "No event is currently open. Please open an event before attempting to close it.",
                         "tool_name": "close_event"
                     }
+            elif toolName == "end_conversation":
+                self.end_conversation_requested = True
+                result = {
+                    "result": "Ending the conversation now.",
+                    "tool_name": "end_conversation",
+                    "end_conversation": True,
+                }
             if not result:
                 result = {"result": "no result found"}
 
@@ -535,14 +580,17 @@ class S2sSessionManager:
             self._session_end_sent = True
             current_task = asyncio.current_task()
         
-            # Cancel any ongoing tool processing tasks
-            for task in list(self.tool_processing_tasks):
+            # Cancel any ongoing tool processing tasks except the current task.
+            other_tool_tasks = [
+                task for task in self.tool_processing_tasks if task is not current_task
+            ]
+            for task in other_tool_tasks:
                 if not task.done():
                     task.cancel()
         
-            # Wait for all tool tasks to complete or be cancelled
-            if self.tool_processing_tasks:
-                await asyncio.gather(*self.tool_processing_tasks, return_exceptions=True)
+            # Wait for non-current tool tasks to complete or be cancelled.
+            if other_tool_tasks:
+                await asyncio.gather(*other_tool_tasks, return_exceptions=True)
             self.tool_processing_tasks.clear()
 
             # Stop audio producer first
@@ -584,6 +632,7 @@ class S2sSessionManager:
             self.toolUseContent = ""
             self.toolUseId = ""
             self.toolName = ""
+            self.end_conversation_requested = False
         
             # Reset session information
             self.prompt_name = None
