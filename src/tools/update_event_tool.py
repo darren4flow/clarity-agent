@@ -168,7 +168,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], cfg.content) if to_update_fields.get("body_update_prompt") else cfg.content,
                         "startDate": new_start_datetime.isoformat(),
                         "endDate": new_end_datetime.isoformat(),
-                        "notifications": to_update_fields.get("notifications", cfg.notifications) 
+                        "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else cfg.notifications,
                     }
                     validated_event = EventModel.model_validate(new_event)
                     new_event = _normalize_event_dump(
@@ -222,7 +222,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "fixed": to_update_fields.get("fixed", cfg.fixed),
                         "stopDate": None,
                         "frequency": to_update_fields.get("frequency", cfg.frequency),
-                        "notifications": to_update_fields.get("notifications", cfg.notifications),
+                        "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else cfg.notifications,
                         "days": to_update_fields.get("days", cfg.days),
                         "allDay": allDay_value,
                         "exceptionDates": [],
@@ -388,7 +388,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None),
                         "startDate": new_start_datetime.isoformat(),
                         "endDate": new_end_datetime.isoformat(),
-                        "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
+                        "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else event_item.get("notifications", [])
                 }
                 updated_event = {**event_item, **updated_fields}
                 validated_updated_event = EventModel.model_validate(updated_event)
@@ -448,7 +448,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "fixed": to_update_fields.get("fixed", cfg.fixed),
                         "stopDate": None,
                         "frequency": to_update_fields.get("frequency", cfg.frequency),
-                        "notifications": to_update_fields.get("notifications", cfg.notifications),
+                        "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else cfg.notifications,
                         "days": to_update_fields.get("days", cfg.days),
                         "allDay": allDay_value,
                         "exceptionDates": cfg.exceptionDates or [],
@@ -476,7 +476,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "content": content_value,
                         "startDate": new_start_datetime.isoformat(),
                         "endDate": new_end_datetime.isoformat(),
-                        "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
+                        "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else event_item.get("notifications", [])
                 }
                 updated_event = {**event_item, **updated_fields}
                 validated_updated_event = EventModel.model_validate(updated_event)
@@ -506,7 +506,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                     "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None),
                     "startDate": new_start_datetime.isoformat(),
                     "endDate": new_end_datetime.isoformat(),
-                    "notifications": to_update_fields.get("notifications", event_item.get("notifications", []))
+                    "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else event_item.get("notifications", [])
             }   
             updated_event = {**event_item, **updated_fields}
             validated_updated_event = EventModel.model_validate(updated_event)
