@@ -544,6 +544,7 @@ async def websocket_handler(websocket: WebSocket):
                             ]["contentName"]
                         elif (event_type == "clientEvent" and data["event"]["clientEvent"].get("name") == "event_opened"):
                             stream_manager.open_event_id = data["event"]["clientEvent"]["payload"]["eventId"]
+                            stream_manager.last_open_event_update = None
                             logger.info(f"👉Set opened event ID: {stream_manager.open_event_id}")
                             sent = await send_open_event_context(
                                 stream_manager, stream_manager.open_event_id
@@ -562,6 +563,7 @@ async def websocket_handler(websocket: WebSocket):
                         elif (event_type == "clientEvent" and data["event"]["clientEvent"].get("name") == "event_closed"):
                             previous_open_event_id = stream_manager.open_event_id
                             stream_manager.open_event_id = None
+                            stream_manager.last_open_event_update = None
                             logger.info(f"👉Cleared opened event ID due to event_closed")
                             sent = await send_closed_event_context(
                                 stream_manager, previous_open_event_id

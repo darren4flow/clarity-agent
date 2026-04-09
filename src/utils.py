@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta,  time, timezone
+import uuid
 from zoneinfo import ZoneInfo
 from typing import Optional
 from decimal import Decimal
@@ -566,3 +567,14 @@ def generate_update_content(lambda_client, user_id, prompt, event_content):
     result_body = json.loads(lambda_result.get("body", "{}"))
     logger.info(f"Lambda result for content update: {lambda_result}")
     return result_body.get("doc", {"content": [{"type": "paragraph"}], "type": "doc"})
+
+
+def add_ids_to_notifications(notifications):
+    for notification in notifications:
+        if "id" not in notification:
+            notification["id"] = str(uuid.uuid4())
+        if "time_before" in notification:
+            notification["timeBefore"] = notification.pop("time_before")
+        if "time_unit" in notification:
+            notification["timeUnit"] = notification.pop("time_unit")
+    return notifications
