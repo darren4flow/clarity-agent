@@ -4,11 +4,12 @@ from datetime import datetime, date, timedelta, time
 from annotated_types import doc
 from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 import uuid
+import re
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from models.repeating_event_config_model import HabitIndexModel, RepeatingEventConfigModel
+from models.repeating_event_config_model import HabitIndexModel, RepeatingEventConfigModel, FREQ_RE
 from models.event_model import EventIndexModel, EventModel
 import utils
 
@@ -76,6 +77,34 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
         "updated_fields": json.dumps({})
       }
     else:
+      def _normalize_recurrence_frequency(raw_frequency, raw_time_unit, fallback_frequency=None):
+        # Accept numeric interval + time_unit (preferred), with safe fallbacks.
+        if raw_time_unit is not None:
+          unit_suffix = utils.time_unit_map(str(raw_time_unit).lower())
+          interval = int(raw_frequency) if raw_frequency is not None else 1
+          return f"{interval}{unit_suffix}"
+
+        if raw_frequency is None:
+          return fallback_frequency
+
+        frequency_str = str(raw_frequency)
+        if FREQ_RE.match(frequency_str):
+          return frequency_str
+
+        if frequency_str.isdigit():
+          if fallback_frequency and FREQ_RE.match(fallback_frequency):
+            old_unit = re.sub(r"^\d+", "", fallback_frequency)
+            return f"{int(frequency_str)}{old_unit}"
+          return f"{int(frequency_str)}D"
+
+        return frequency_str
+
+      def _parse_datetime(value):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+          return parsed.replace(tzinfo=tz)
+        return parsed
+
       # get the event from DynamoDB
       ddb_event_item = ddb_client.get_item(
             TableName='Events',
@@ -95,6 +124,7 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
       new_end_time_str = None
 
       to_update_fields = {k: v for k, v in request_details.items() if k not in ["action"] and v is not None}
+      has_recurrence_intent = "recurrence" in to_update_fields and to_update_fields["recurrence"] is not None
       updated_fields = {}
       for key, value in to_update_fields.items():
         if key == "title":
@@ -123,8 +153,16 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
           new_end_date = date.fromisoformat(value)
         elif key == "end_time":
           new_end_time_str = value
-        elif key == "all_day":
-          updated_fields["allDay"] = value
+        elif key == "recurrence":
+            if "frequency" in value:
+              new_frequency = _normalize_recurrence_frequency(value.get("frequency"), value.get("timeUnit"))
+              if not new_frequency or not FREQ_RE.match(new_frequency):
+                return {"result": "Invalid recurrence frequency. Use numeric frequency with time_unit (daily/weekly/monthly/yearly)."}
+              updated_fields["frequency"] = new_frequency
+            if "days" in value:
+              updated_fields["days"] = value["days"]
+            if "stop_date" in value:
+              updated_fields["stopDate"] = value["stop_date"]
         else:
           updated_fields[key] = value
 
@@ -153,6 +191,96 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
       effective_end_datetime = datetime.fromisoformat(updated_fields.get("endDate", event_item["endDate"])).replace(tzinfo=tz)
       if effective_end_datetime <= effective_start_datetime:
         return {"result": "Invalid date/time range: end date/time must be after start date/time."}
+
+      effective_start_local = effective_start_datetime.astimezone(tz)
+      effective_end_local = effective_end_datetime.astimezone(tz)
+      effective_length_minutes = int((effective_end_local - effective_start_local).total_seconds() / 60)
+
+      if has_recurrence_intent:
+        # stop_date is currently accepted but intentionally ignored for new config creation.
+        if event_item.get("habitId"):
+          old_habit_id = event_item["habitId"]
+          ddb_config_item = ddb_client.get_item(
+            TableName='Habits',
+            Key={'userId': {'S': user_id}, 'id': {'S': old_habit_id}}
+          )
+          if not ddb_config_item.get('Item'):
+            return {"result": "Could not find the recurring event config in the database for the open event."}
+
+          config_item = {k: deserializer.deserialize(v) for k, v in ddb_config_item['Item'].items()}
+          cfg = RepeatingEventConfigModel.model_validate(config_item)
+
+          new_stop_date = current_start_datetime.date()
+          ddb_client.update_item(
+            TableName='Habits',
+            Key={'userId': {'S': user_id}, 'id': {'S': cfg.id}},
+            UpdateExpression="SET stopDate = :sd",
+            ExpressionAttributeValues={":sd": serializer.serialize(utils._to_dynamodb_compatible(new_stop_date))}
+          )
+
+          new_repeat_config = {
+            "id": str(uuid.uuid4()),
+            "userId": cfg.userId,
+            "name": updated_fields.get("description", event_item.get("description", cfg.name)),
+            "content": updated_fields.get("content", event_item.get("content", cfg.content)),
+            "creationDate": effective_start_local.date().strftime('%Y-%m-%d'),
+            "type": updated_fields.get("type", event_item.get("type", cfg.eventType)),
+            "priority": updated_fields.get("priority", event_item.get("priority", cfg.priority)),
+            "fixed": updated_fields.get("fixed", event_item.get("fixed", cfg.fixed)),
+            "stopDate": None,
+            "frequency": updated_fields.get("frequency", cfg.frequency),
+            "notifications": updated_fields.get("notifications", event_item.get("notifications", cfg.notifications or [])),
+            "days": updated_fields.get("days") if updated_fields.get("days") is not None else cfg.days,
+            "allDay": updated_fields.get("allDay", event_item.get("allDay", cfg.allDay)),
+            "exceptionDates": cfg.exceptionDates or [],
+            "prevVersionHabitId": cfg.id,
+            "startTime": {
+              "hour": effective_start_local.hour,
+              "minute": effective_start_local.minute,
+              "timezone": timezone
+            },
+            "length": effective_length_minutes,
+          }
+          validated_new_repeat = RepeatingEventConfigModel.model_validate(new_repeat_config)
+          normalized_repeat = validated_new_repeat.model_dump(mode="python")
+          ddb_habit_item = {
+            k: serializer.serialize(utils._to_dynamodb_compatible(v))
+            for k, v in normalized_repeat.items()
+          }
+          ddb_client.put_item(TableName='Habits', Item=ddb_habit_item)
+          updated_fields["habitId"] = normalized_repeat["id"]
+        else:
+          new_repeat_config = {
+            "id": str(uuid.uuid4()),
+            "userId": user_id,
+            "name": updated_fields.get("description", event_item.get("description", "Recurring Event")),
+            "content": updated_fields.get("content", event_item.get("content", None)),
+            "creationDate": effective_start_local.date().strftime('%Y-%m-%d'),
+            "type": updated_fields.get("type", event_item.get("type", "personal")),
+            "priority": updated_fields.get("priority", event_item.get("priority", None)),
+            "fixed": updated_fields.get("fixed", event_item.get("fixed", False)),
+            "stopDate": None,
+            "frequency": updated_fields.get("frequency", None),
+            "notifications": updated_fields.get("notifications", event_item.get("notifications", [])),
+            "days": updated_fields.get("days", []),
+            "allDay": updated_fields.get("allDay", event_item.get("allDay", False)),
+            "exceptionDates": [effective_start_local.date().strftime('%Y-%m-%d')],
+            "prevVersionHabitId": None,
+            "startTime": {
+              "hour": effective_start_local.hour,
+              "minute": effective_start_local.minute,
+              "timezone": timezone
+            },
+            "length": effective_length_minutes,
+          }
+          validated_new_repeat = RepeatingEventConfigModel.model_validate(new_repeat_config)
+          normalized_repeat = validated_new_repeat.model_dump(mode="python")
+          ddb_habit_item = {
+            k: serializer.serialize(utils._to_dynamodb_compatible(v))
+            for k, v in normalized_repeat.items()
+          }
+          ddb_client.put_item(TableName='Habits', Item=ddb_habit_item)
+          updated_fields["habitId"] = normalized_repeat["id"]
       
       
       updated_event = {**event_item, **updated_fields}
