@@ -166,8 +166,8 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "fixed": to_update_fields.get("fixed", cfg.fixed),
                         "priority": to_update_fields.get("priority", cfg.priority),
                         "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], cfg.content) if to_update_fields.get("body_update_prompt") else cfg.content,
-                        "startDate": new_start_datetime.isoformat(),
-                        "endDate": new_end_datetime.isoformat(),
+                        "startDate": utils.to_utc_iso_z(new_start_datetime),
+                        "endDate": utils.to_utc_iso_z(new_end_datetime),
                         "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else cfg.notifications,
                     }
                     validated_event = EventModel.model_validate(new_event)
@@ -386,8 +386,8 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                         "priority": to_update_fields.get("priority", event_item.get("priority", None)),
                         "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None),
-                        "startDate": new_start_datetime.isoformat(),
-                        "endDate": new_end_datetime.isoformat(),
+                        "startDate": utils.to_utc_iso_z(new_start_datetime),
+                        "endDate": utils.to_utc_iso_z(new_end_datetime),
                         "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else event_item.get("notifications", [])
                 }
                 updated_event = {**event_item, **updated_fields}
@@ -474,8 +474,8 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                         "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                         "priority": to_update_fields.get("priority", event_item.get("priority", None)),
                         "content": content_value,
-                        "startDate": new_start_datetime.isoformat(),
-                        "endDate": new_end_datetime.isoformat(),
+                        "startDate": utils.to_utc_iso_z(new_start_datetime),
+                        "endDate": utils.to_utc_iso_z(new_end_datetime),
                         "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else event_item.get("notifications", [])
                 }
                 updated_event = {**event_item, **updated_fields}
@@ -504,8 +504,8 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                     "fixed": to_update_fields.get("fixed", event_item.get("fixed", False)),
                     "priority": to_update_fields.get("priority", event_item.get("priority", None)),
                     "content": utils.generate_update_content(lambda_client, user_id, to_update_fields["body_update_prompt"], event_item.get("content", None)) if to_update_fields.get("body_update_prompt") else event_item.get("content", None),
-                    "startDate": new_start_datetime.isoformat(),
-                    "endDate": new_end_datetime.isoformat(),
+                    "startDate": utils.to_utc_iso_z(new_start_datetime),
+                    "endDate": utils.to_utc_iso_z(new_end_datetime),
                     "notifications": utils.add_ids_to_notifications(to_update_fields.get("notifications")) if to_update_fields.get("notifications") else event_item.get("notifications", [])
             }   
             updated_event = {**event_item, **updated_fields}

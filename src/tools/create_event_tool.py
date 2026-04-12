@@ -89,8 +89,8 @@ def create_event(ddb_client, lambda_client, user_id, content, timezone):
         "fixed": event_details.get("fixed", False),
         "priority": event_details.get("priority", None),
         "content": utils.generate_update_content(lambda_client, user_id, event_details.get("tasks_content_prompt"), None) if event_details.get("tasks_content_prompt") else None,
-        "startDate": start_datetime.isoformat(),
-        "endDate": end_datetime.isoformat(),
+        "startDate": utils.to_utc_iso_z(start_datetime),
+        "endDate": utils.to_utc_iso_z(end_datetime),
         "notifications": notifications
       }
       validated_event = EventModel.model_validate(new_event)
