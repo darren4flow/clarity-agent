@@ -97,7 +97,7 @@ def create_event(ddb_client, lambda_client, user_id, content, timezone):
       new_event = validated_event.model_dump(mode="python", include=set(new_event.keys()))
       for date_key in ("startDate", "endDate"):
         if isinstance(new_event.get(date_key), datetime):
-          new_event[date_key] = new_event[date_key].isoformat()
+          new_event[date_key] = utils.to_utc_iso_z(new_event[date_key])
       ddb_event_item= {k: serializer.serialize(v) for k, v in new_event.items()}
       ddb_client.put_item(TableName='Events', Item=ddb_event_item)
       logger.info(f"DynamoDB put_item succeeded for event: {new_event}")
