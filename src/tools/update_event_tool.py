@@ -20,7 +20,7 @@ deserializer = TypeDeserializer()
 def _normalize_event_dump(event_dict):
     for date_key in ("startDate", "endDate"):
         if isinstance(event_dict.get(date_key), datetime):
-            event_dict[date_key] = event_dict[date_key].isoformat()
+            event_dict[date_key] = utils.to_utc_iso_z(event_dict[date_key])
     return event_dict
 
 
@@ -35,10 +35,10 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
     to_update_fields = {k: v for k, v in event_details.items() if k not in ["current_title", "current_start_date", "current_start_time", "this_event_only", "this_and_future_events"] and v is not None}
     event_title = event_details.get("current_title")
     
-    start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else datetime.now(tz).date()
+    start_date = date.fromisoformat(event_details.get("current_start_date")) if event_details.get("current_start_date", None) else datetime.now(tz).date()
     start_time = event_details.get("current_start_time", None)
     
-    new_start_date = date.fromisoformat(to_update_fields.get('new_start_date', None)) if to_update_fields.get('new_start_date', None) else None
+    new_start_date = date.fromisoformat(to_update_fields.get('new_start_date')) if to_update_fields.get('new_start_date', None) else None
     new_start_time = to_update_fields.get('new_start_time', None)   
     
     # logger.info(f"The current start_datetime is: {start_datetime}")
@@ -354,8 +354,8 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
         )
         
         # calculate the new start and end datetimes based on the provided update fields and current datetimes (and the allDay value)
-        current_start_datetime = datetime.fromisoformat(event_item['startDate']).replace(tzinfo=tz)
-        current_end_datetime = datetime.fromisoformat(event_item['endDate']).replace(tzinfo=tz)
+        current_start_datetime = datetime.fromisoformat(event_item['startDate'])
+        current_end_datetime = datetime.fromisoformat(event_item['endDate'])
         current_length = int((current_end_datetime - current_start_datetime).total_seconds() / 60)
         try:
             allDay_value = utils.get_new_all_day(event_item.get("allDay", False), to_update_fields)
