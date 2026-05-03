@@ -283,6 +283,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
     hits = []
     for hit in unfiltered_hits:
         if hit['_score'] >= 0.8:  # filter out low relevance matches
+            print(f"👉Found matching event hit with score {hit['_score']}: {hit['_source']['title']} starting at {hit['_source']['startDate']}")
             hits.append(hit)
         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
     total_found = len(hits)
@@ -313,8 +314,8 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
         if not target_doc:
             return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {search_dt.isoformat()}."}
     elif start_date:
-        options = [f"on {hit['_source']['startDate']}" for hit in hits]
-        return {"result": f"found {total_found} matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to update."}
+        options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime("%m/%d/%y %I:%M %p")}" for hit in hits]
+        return {"result": f"found {total_found} close matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to update."}
     elif start_time:
         # search for today's date with the provided time
         today_date = datetime.now(tz).date()
@@ -327,7 +328,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
         if not target_doc:
             return {"result": f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."}
     else:
-        options = [f"on {hit['_source']['startDate']}" for hit in hits]
+        options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime("%m/%d/%y %I:%M %p")}" for hit in hits]
         return {
             "result": f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I update?"
         }
