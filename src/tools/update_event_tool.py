@@ -283,7 +283,6 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
     hits = []
     for hit in unfiltered_hits:
         if hit['_score'] >= 0.8:  # filter out low relevance matches
-            print(f"👉Found matching event hit with score {hit['_score']}: {hit['_source']['title']} starting at {hit['_source']['startDate']}")
             hits.append(hit)
         logger.info(f"score: {hit['_score']}, title: {hit['_source']['title']} startDate: {hit['_source']['startDate']}")
     total_found = len(hits)
@@ -400,7 +399,7 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                 ddb_event_item= {k: serializer.serialize(v) for k, v in updated_event.items()}
                 ddb_client.put_item(TableName='Events', Item=ddb_event_item)
                 logger.info(f"Updated single event occurrence in DynamoDB: {updated_event}")
-                return {"result": f"Successfully updated only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'.",
+                return {"result": f"Successfully updated only the occurrence on {datetime.fromisoformat(target_doc['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')} for recurring event '{event_title}'.",
                         "updated_event": updated_event}
             elif event_details.get("this_and_future_events", False):
                 # get the repeat config data from DynamoDB
@@ -489,13 +488,13 @@ def update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, u
                 ddb_client.put_item(TableName='Events', Item=ddb_event_item)
                 logger.info(f"Updated single event occurrence in DynamoDB: {updated_event}")
                 
-                return {"result": f"Successfully updated this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'." ,
+                return {"result": f"Successfully updated this and future occurrences from {datetime.fromisoformat(target_doc['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')} for recurring event '{event_title}'." ,
                         "updated_repeat_config": updated_repeat_config,
                         "new_repeat_config": new_repeat_config,
                         "updated_event": updated_event
                         }
             else:
-                return {"result": f"Do you want to update only the occurrence on {target_doc['_source']['startDate']}? Or do you want to update this event and all future occurrences?"}
+                return {"result": f"Do you want to update only the occurrence on {datetime.fromisoformat(target_doc['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}? Or do you want to update this event and all future occurrences?"}
         else:
             updated_fields = {
                     "done": to_update_fields.get("done", event_item.get("done", False)),

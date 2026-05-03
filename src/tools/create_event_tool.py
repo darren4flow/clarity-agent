@@ -76,7 +76,12 @@ def create_event(ddb_client, lambda_client, user_id, content, timezone):
       ddb_habit_item= {k: serializer.serialize(v) for k, v in new_habit.items()}
       ddb_client.put_item(TableName='Habits', Item=ddb_habit_item)
       logger.info(f"DynamoDB put_item succeeded for habit: {new_habit}")
-      result = f"Recuring event '{event_title}' created: {new_habit}"
+      result = {
+        "result": f"Tell the user the repeating event '{event_title}' has been created.",
+        "new_repeating_event_config": new_habit
+      }
+      logger.info(result)
+      return result
     else:
       new_event = {
         "id": str(uuid.uuid4()),
@@ -101,12 +106,13 @@ def create_event(ddb_client, lambda_client, user_id, content, timezone):
       ddb_event_item= {k: serializer.serialize(v) for k, v in new_event.items()}
       ddb_client.put_item(TableName='Events', Item=ddb_event_item)
       logger.info(f"DynamoDB put_item succeeded for event: {new_event}")
-      result = f"Event '{event_title}' created: {new_event}"
-
-    logger.info(f"Created event: {result}")
-    logger.info(f"Event details: {event_details}")
+      result = {
+        "result": f"Tell the user the event '{event_title}' has been created.",
+        "new_event": new_event
+      }
+      logger.info(result)
+      return result
   except Exception as e:
     logger.error(f"Error creating event: {e}", exc_info=True)
-    result = f"Failed to create event: {str(e)}"
-  
-  return {"result": result}
+    result = {"result": f"Failed to create event: {str(e)}"}
+    return result

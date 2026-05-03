@@ -28,13 +28,8 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
     
     start_date = date.fromisoformat(event_details.get("current_start_date", None)) if event_details.get("current_start_date", None) else None
     start_time = event_details.get("current_start_time", None)
-    
-    # logger.info(f"The current start_datetime is: {start_datetime}")
-    # logger.info(f"The new_start_datetime to open to is: {new_start_datetime}")
-    
-    # return {"result": "The open_event tool is under development and not yet implemented."}
-    logger.info(f"Searching for event to open: title='{event_title}', start_date='{start_date}', start_time='{start_time}'")
 
+    logger.info(f"Searching for event to open: title='{event_title}', start_date='{start_date}', start_time='{start_time}'")
     # Vectorize and Hybrid Search to find candidate events
     embed_response = bedrock_client.invoke_model(
         body=json.dumps({"inputText": event_title}),
@@ -105,12 +100,12 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
                 start_datetime = datetime.combine(start_date, time(cfg.startTime.hour, cfg.startTime.minute)).replace(tzinfo=ZoneInfo(cfg.startTime.timezone))
                 end_datetime = start_datetime + timedelta(minutes=cfg.length)
                 return {
-                        "result": f"Found the matching event. I'm including the details in the response so the client can open the event occurrence on {start_datetime.isoformat()} for recurring event '{event_title}'.",
+                        "result": f"Found the matching event. I'm including the details in the response so the client can open the event occurrence on {start_datetime.strftime('%m/%d/%y %I:%M %p')} for recurring event '{event_title}'.",
                         "event_details": {
                             "name": cfg.name,
                             "habitId": cfg.id,
-                            "startDate": start_datetime.isoformat(),
-                            "endDate": end_datetime.isoformat(),
+                            "startDate": start_datetime.strftime('%m/%d/%y %I:%M %p'),
+                            "endDate": end_datetime.strftime('%m/%d/%y %I:%M %p'),
                             "allDay": cfg.allDay
                         },
                         "tool_name": "open_event"
@@ -181,10 +176,10 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
                 logger.info(f"Matching event found for open with start datetime: {target_doc['_source']['title']}")
                 break
         if not target_doc:
-            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {search_dt.isoformat()}."}
+            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {search_dt.strftime('%m/%d/%y %I:%M %p')}."}
     elif start_date:
         #TODO: handle the case that only one event matches. Also, handle the case that the current allDay flag is true.
-        options = [f"on {hit['_source']['startDate']}" for hit in hits]
+        options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}" for hit in hits]
         return {"result": f"found {total_found} matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to open."}
     elif start_time:
         # search for today's date with the provided time
@@ -198,7 +193,7 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
         if not target_doc:
             return {"result": f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."}
     else:
-        options = [f"on {hit['_source']['startDate']}" for hit in hits]
+        options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}" for hit in hits]
         return {
             "result": f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I open?"
         }

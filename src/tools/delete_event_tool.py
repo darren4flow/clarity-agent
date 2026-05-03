@@ -170,7 +170,7 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
               result_msg += f" and start date '{start_date}'"
           if start_time:
               result_msg += f" and start time '{start_time}'."
-          logger.info(result_msg  )
+          logger.info(result_msg)
           return {"result": result_msg}
       
       # handle ambiguity vs exact match
@@ -188,10 +188,10 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                   logger.info(f"Matching event found for deletion with start date: {target_doc}")
                   break
           if not target_doc:
-              return {"result": f"found multiple events with title '{event_title}' but none match the provided start date {search_dt.isoformat()}."}
+              return {"result": f"found multiple events with title '{event_title}' but none match the provided start date {search_dt.strftime('%m/%d/%y %I:%M %p')}."}
       elif start_date:
-          options = [f"on {hit['_source']['startDate']}" for hit in hits]
-          return {"result": f"found {total_found} matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to delete."}
+          options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}" for hit in hits]
+          return {"result": f"found {total_found} close matches for '{event_title}' on date '{start_date}': {', '.join(options)}. Please provide the start time as well to identify the specific event to delete."}
       elif start_time:
           today_date = datetime.now(tz).date()
           search_dt = datetime.fromisoformat(f"{today_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
@@ -203,8 +203,8 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
           if not target_doc:
               return {"result": f"found multiple events with title '{event_title}' but none match the provided start time {start_time} on today's date."}
       else:
-          options = [f"on {hit['_source']['startDate']}" for hit in hits]
-          return {"result": f"Found {total_found} matches for '{event_title}': {', '.join(options)}. Which one should I delete?"}
+          options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}" for hit in hits]
+          return {"result": f"Found {total_found} close matches for '{event_title}': {', '.join(options)}. Which one should I delete?"}
       
       if target_doc:
           os_id = target_doc['_id']
@@ -218,7 +218,7 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                       TableName='Events',
                       Key={'userId': {'S': user_id}, 'id': {'S': eventId}}
                   )
-                  return {"result": f"Successfully deleted only the occurrence on {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
+                  return {"result": f"Successfully deleted only the occurrence on {datetime.fromisoformat(target_doc['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')} for recurring event '{event_title}'."}
               elif event_details.get("this_and_future_events", False):
                   new_stop_date = target_event.startDate.date()
                   # update the habit to set stopDate in DynamoDB and OpenSearch
@@ -242,9 +242,9 @@ def delete_event(ddb_client, bedrock_client, opensearch_client, user_id, content
                       TableName='Events',
                       Key={'userId': {'S': user_id}, 'id': {'S': eventId}}
                   )
-                  return {"result": f"Successfully deleted this and future occurrences from {target_doc['_source']['startDate']} for recurring event '{event_title}'."}
+                  return {"result": f"Successfully deleted this and future occurrences from {datetime.fromisoformat(target_doc['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')} for recurring event '{event_title}'."}
               else:
-                  return {"result": f"Do you want to delete only the occurrence on {target_doc['_source']['startDate']}? Or do you want to delete this event and all future occurrences?"}
+                  return {"result": f"Do you want to delete only the occurrence on {datetime.fromisoformat(target_doc['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}? Or do you want to delete this event and all future occurrences?"}
           # opensearch_client.delete(index="calendar-events", id=os_id)
           ddb_client.delete_item(
               TableName='Events',
