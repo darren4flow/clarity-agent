@@ -181,7 +181,7 @@ async def test_create_event_calls_ddb_put_item(monkeypatch):
     print(res)
 
     assert isinstance(res, dict)
-    assert "Event 'Test Meeting' created" in res["result"]
+    assert "'Test Meeting' has been created" in res["result"]
     assert mock_put.called
 
 """
@@ -275,8 +275,8 @@ async def test_update_repeating_unsaved_timed_event_this_event_only(monkeypatch)
       "fixed": True,  
       "priority": "Critical",
       "content": None,
-      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
       "notifications": []
     }
     assert actual_new_event == expected_new_event
@@ -373,8 +373,8 @@ async def test_update_repeating_unsaved_timed_event_to_all_day_this_event_only(m
       "fixed": True,  
       "priority": "Critical",
       "content": None,
-      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
       "notifications": []
     }
     assert actual_new_event == expected_new_event
@@ -471,8 +471,8 @@ async def test_update_repeating_unsaved_all_day_event_this_event_only(monkeypatc
       "fixed": True,  
       "priority": "Critical",
       "content": None,
-      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
       "notifications": []
     }
     assert actual_new_event == expected_new_event
@@ -569,8 +569,8 @@ async def test_update_repeating_unsaved_all_day_to_timed_event_this_event_only(m
       "fixed": True,  
       "priority": "Critical",
       "content": None,
-      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
       "notifications": []
     }
     assert actual_new_event == expected_new_event
@@ -1094,8 +1094,8 @@ async def test_update_repeating_saved_timed_event_this_event_only(monkeypatch):
         "eventId": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Habit",
         "done": False,
         "allDay": False,
@@ -1142,8 +1142,8 @@ async def test_update_repeating_saved_timed_event_this_event_only(monkeypatch):
         "id": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
         "description": "Updated Title",
         "done": False,
         "allDay": False,
@@ -1196,8 +1196,8 @@ async def test_update_repeating_saved_all_day_event_this_event_only(monkeypatch)
         "eventId": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Habit",
         "done": False,
         "allDay": True,
@@ -1244,8 +1244,8 @@ async def test_update_repeating_saved_all_day_event_this_event_only(monkeypatch)
         "id": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "description": "Updated Title",
         "done": False,
         "allDay": True,
@@ -1299,8 +1299,8 @@ async def test_update_repeating_saved_timed_event_to_all_day_this_event_only(mon
         "eventId": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Habit",
         "done": False,
         "allDay": False,
@@ -1347,8 +1347,8 @@ async def test_update_repeating_saved_timed_event_to_all_day_this_event_only(mon
         "id": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "description": "Updated Title",
         "done": False,
         "allDay": True,
@@ -1403,8 +1403,8 @@ async def test_update_repeating_saved_all_day_event_to_timed_this_event_only(mon
         "eventId": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Habit",
         "done": False,
         "allDay": True,
@@ -1451,8 +1451,8 @@ async def test_update_repeating_saved_all_day_event_to_timed_this_event_only(mon
         "id": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:15:00.000Z",
         "description": "Updated Title",
         "done": False,
         "allDay": False,
@@ -1523,8 +1523,8 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
         "eventId": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Habit",
         "done": False,
         "allDay": False,
@@ -1628,8 +1628,8 @@ async def test_update_repeating_saved_event_this_and_future_events(monkeypatch):
       "fixed": payload["fixed"],
       "priority": payload["priority"],
       "content": None,
-      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+      "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+      "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
       "notifications": []
     }
     assert updated_new_event == expected_updated_event
@@ -1675,8 +1675,8 @@ async def test_update_repeating_saved_event_this_and_future_events_serializes_ex
         "eventId": "eid",
         "userId": "test-user",
         "habitId": "hid",
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Habit",
         "done": False,
         "allDay": False,
@@ -1761,8 +1761,8 @@ async def test_update_nonrepeating_event(monkeypatch):
         "eventId": "eid",
         "userId": "test-user",
         "habitId": None,
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Event",
         "done": False,
         "allDay": False,
@@ -1808,8 +1808,8 @@ async def test_update_nonrepeating_event(monkeypatch):
         "id": "eid",
         "userId": "test-user",
         "habitId": None,
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
         "description": payload["new_title"],
         "done": payload["done"],
         "allDay": False,
@@ -1848,8 +1848,8 @@ async def test_update_nonrepeating_event_multiple_matches_date_and_time_given(mo
         "eventId": "eid",
         "userId": "test-user",
         "habitId": None,
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Event",
         "done": False,
         "allDay": False,
@@ -1865,8 +1865,8 @@ async def test_update_nonrepeating_event_multiple_matches_date_and_time_given(mo
         "_score": 1
     }
     event2_data = event_data.copy()
-    event2_data['startDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:00:00+00:00"
-    event2_data['endDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:15:00+00:00"
+    event2_data['startDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:00:00.000Z"
+    event2_data['endDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:15:00.000Z"
     event2_data['eventId'] = "eid2"
     event2_hit = {
         "_id": "eid2",
@@ -1904,8 +1904,8 @@ async def test_update_nonrepeating_event_multiple_matches_date_and_time_given(mo
         "id": "eid",
         "userId": "test-user",
         "habitId": None,
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
         "description": payload["new_title"],
         "done": payload["done"],
         "allDay": False,
@@ -1946,8 +1946,8 @@ async def test_update_nonrepeating_event_multiple_matches_only_date_given(monkey
         "eventId": "eid",
         "userId": "test-user",
         "habitId": None,
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:15:00.000Z",
         "title": "Test Event",
         "done": False,
         "allDay": False,
@@ -1963,8 +1963,8 @@ async def test_update_nonrepeating_event_multiple_matches_only_date_given(monkey
         "_score": 1
     }
     event2_data = event_data.copy()
-    event2_data['startDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:00:00+00:00"
-    event2_data['endDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:15:00+00:00"
+    event2_data['startDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:00:00.000Z"
+    event2_data['endDate'] = (datetime.now(ZoneInfo("UTC")).date() + timedelta(days=1)).isoformat() + "T11:15:00.000Z"
     event2_data['eventId'] = "eid2"
     event2_hit = {
         "_id": "eid2",
@@ -2002,8 +2002,8 @@ async def test_update_nonrepeating_event_multiple_matches_only_date_given(monkey
         "id": "eid",
         "userId": "test-user",
         "habitId": None,
-        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00+00:00",
-        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00+00:00",
+        "startDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T10:00:00.000Z",
+        "endDate": datetime.now(ZoneInfo("UTC")).date().isoformat() + "T11:00:00.000Z",
         "description": payload["new_title"],
         "done": payload["done"],
         "allDay": False,
@@ -2040,3 +2040,26 @@ def test_get_utc_day_bounds_dst_spring_forward():
     assert start == expected_start
     assert end == expected_end
     assert (end - start) == timedelta(hours=23)
+    
+    
+    
+    
+# @pytest.mark.asyncio
+# async def test_update_nonrepeating_event_live_test(monkeypatch):
+#     s = S2sSessionManager(region="us-east-1", model_id="amazon.nova-2-sonic-v1:0", user_id="a4687408-b0d1-70a2-98c2-a0f29d019ed7", timezone="America/New_York")
+    
+#     payload = {
+#         "current_start_date": "2026-05-05",
+#         "new_start_time": "20:00",
+#         "current_start_time": "16:00",
+#         "current_title": "continue reading docs on memory strategy",
+#         "new_start_date": "2026-05-04"
+#     }
+    
+#    # call processToolUse for update_event with this_event_only = true
+#     res = await s.processToolUse("update_event", {"content": json.dumps(payload)})
+
+#     print(res)
+#     # Ensure that the old repeat config has a stop date set
+#     actual_updated_event = res["updated_event"]
+#     assert actual_updated_event['startDate'] == "2026-05-05T00:00:00.000Z"

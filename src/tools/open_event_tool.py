@@ -125,18 +125,18 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
     
     if start_date and start_time:
         start_datetime = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
-        filters.append({"term": {"startDate": start_datetime.isoformat()}})
-        logger.info(f"Added startDate term filter for search: {start_datetime.isoformat()}")
+        filters.append({"term": {"startDate": utils.to_utc_iso_z(start_datetime)}})
+        logger.info(f"Added startDate term filter for search: {utils.to_utc_iso_z(start_datetime)}")
     elif start_date:
         start_range, end_range = utils.get_utc_day_bounds(start_date, timezone)
-        filters.append({"range": {"startDate": {"gte": start_range.isoformat(), "lte": end_range.isoformat()}}})
-        logger.info(f"Added startDate range filter for search: gte {start_range.isoformat()} lte {end_range.isoformat()}")
+        filters.append({"range": {"startDate": {"gte": utils.to_utc_iso_z(start_range), "lte": utils.to_utc_iso_z(end_range)}}})
+        logger.info(f"Added startDate range filter for search: gte {utils.to_utc_iso_z(start_range)} lte {utils.to_utc_iso_z(end_range)}")
     elif start_time:
         # search for today's date with the provided time
         today_date = datetime.now(tz).date()
         search_datetime = datetime.fromisoformat(f"{today_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
-        filters.append({"term": {"startDate": search_datetime.isoformat()}})
-        logger.info(f"Added startDate term filter for search: {search_datetime.isoformat()}")
+        filters.append({"term": {"startDate": utils.to_utc_iso_z(search_datetime)}})
+        logger.info(f"Added startDate term filter for search: {utils.to_utc_iso_z(search_datetime)}")
     
     search_body["query"]["bool"]["filter"] = filters
     opensearch_response = opensearch_client.search(
@@ -171,12 +171,12 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
         # filter by start date if provided
         search_dt = datetime.fromisoformat(f"{start_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
         for hit in hits:
-            if hit['_source']['startDate'] == search_dt.isoformat():
+            if hit['_source']['startDate'] == utils.to_utc_iso_z(search_dt):
                 target_doc = hit
                 logger.info(f"Matching event found for open with start datetime: {target_doc['_source']['title']}")
                 break
         if not target_doc:
-            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {search_dt.strftime('%m/%d/%y %I:%M %p')}."}
+            return {"result": f"found multiple events with title '{event_title}' but none match the provided start date and time {utils.to_utc_iso_z(search_dt)}."}
     elif start_date:
         #TODO: handle the case that only one event matches. Also, handle the case that the current allDay flag is true.
         options = [f"{hit['_source']['title']} on {datetime.fromisoformat(hit['_source']['startDate']).astimezone(tz).strftime('%m/%d/%y %I:%M %p')}" for hit in hits]
@@ -186,7 +186,7 @@ def open_event(ddb_client, bedrock_client, opensearch_client, user_id, content, 
         today_date = datetime.now(tz).date()
         search_dt = datetime.fromisoformat(f"{today_date.isoformat()}T{start_time}:00").replace(tzinfo=tz)
         for hit in hits:
-            if hit['_source']['startDate'] == search_dt.isoformat():
+            if hit['_source']['startDate'] == utils.to_utc_iso_z(search_dt):
                 target_doc = hit
                 logger.info(f"Matching event found for open with start datetime: {target_doc['_source']['title']}")
                 break
