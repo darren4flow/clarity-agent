@@ -57,11 +57,15 @@ async def test_read_events_date_only_returns_sorted_events(monkeypatch):
     assert res["result"] == "Found 2 events."
     assert res["events"] == [
         {
+            "content": '',
+            "done": False,
             "title": "Meeting B",
             "startDate": f"{today.strftime('%m/%d/%y')} 08:00 AM",
             "endDate": f"{today.strftime('%m/%d/%y')} 08:30 AM",
         },
         {
+            "content": '',
+            "done": False,
             "title": "Meeting A",
             "startDate": f"{today.strftime('%m/%d/%y')} 09:00 AM",
             "endDate": f"{today.strftime('%m/%d/%y')} 09:30 AM",
@@ -109,11 +113,15 @@ async def test_read_events_time_range_only_includes_generated_and_saved(monkeypa
     assert res["result"] == "Found 2 events."
     assert res["events"] == [
         {
+            "content": '',
+            "done": False,
             "title": "Daily Standup",
             "startDate": f"{today.strftime('%m/%d/%y')} 10:00 AM",
             "endDate": f"{today.strftime('%m/%d/%y')} 10:30 AM",
         },
         {
+            "content": '',
+            "done": False,
             "title": "Inside Range",
             "startDate": f"{today.strftime('%m/%d/%y')} 10:15 AM",
             "endDate": f"{today.strftime('%m/%d/%y')} 10:45 AM",
@@ -157,6 +165,8 @@ async def test_read_events_date_range_time_range_respects_exception_dates(monkey
     assert res["result"] == "Found 1 events."
     assert res["events"] == [
         {
+            "content": '',
+            "done": False,
             "title": "Morning Review",
             "startDate": f"{tomorrow.strftime('%m/%d/%y')} 09:15 AM",
             "endDate": f"{tomorrow.strftime('%m/%d/%y')} 09:30 AM",
