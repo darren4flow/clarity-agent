@@ -33,15 +33,19 @@ CHUNK_SIZE = 1024
 credential_refresh_task = None
 
 
-async def send_open_event_context(stream_manager, event_id):
+async def send_open_event_context(stream_manager, event_id, before_convo=False, source=None):
     """Send hidden context to Nova Sonic about the currently opened event."""
     prompt_name = getattr(stream_manager, "prompt_name", None)
     if not prompt_name:
         return False
 
     content_name = f"event_context_{int(datetime.now().timestamp() * 1000)}"
-    context_message = f"I currently have this event opened on my device. I just started this conversation and wanted to share this context with you so that you understand to use tools for when an event is already open. DO NOT CLOSE OR OPEN THIS EVENT UNLESS I EXPLICITLY TELL YOU TO. Event ID {event_id} is currently open. Start the conversation with me by only saying 'I see you have an event open' and wait for my response."
-
+    if before_convo:
+        context_message = f"I currently have this event opened on my device. I just started this conversation and wanted to share this context with you so that you understand to use tools for when an event is already open. DO NOT CLOSE OR OPEN THIS EVENT UNLESS I EXPLICITLY TELL YOU TO. Event ID {event_id} is currently open. Start the conversation with me by only saying 'I see you have an event open' and wait for my response."
+    elif source == "manual_calendar_tap":
+        context_message = f"I currently have this event, event ID {event_id}, opened on my device and wanted to share this context with you so that you understand to use tools for when an event is already open. DO NOT CLOSE OR OPEN THIS EVENT UNLESS I EXPLICITLY TELL YOU TO. Say 'I see you opened an event' to acknowledge."
+    else:
+        context_message = f"I currently have this event, event ID {event_id}, opened on my device and wanted to share this context with you so that you understand to use tools for when an event is already open. DO NOT CLOSE OR OPEN THIS EVENT UNLESS I EXPLICITLY TELL YOU TO. Say 'Event opened.' to acknowledge."
 
     await stream_manager.send_raw_event(
         S2sEvent.content_start_user_text(prompt_name, content_name)
@@ -53,21 +57,31 @@ async def send_open_event_context(stream_manager, event_id):
     return True
 
 
-async def send_closed_event_context(stream_manager, previously_open_event_id):
+async def send_closed_event_context(stream_manager, previously_open_event_id, source=None):
     """Send hidden context to Nova Sonic that no event is currently open."""
     prompt_name = getattr(stream_manager, "prompt_name", None)
     if not prompt_name:
         return False
 
     content_name = f"event_context_{int(datetime.now().timestamp() * 1000)}"
-    if previously_open_event_id:
-        context_message = (
-            f"I just manually closed the event with Event ID {previously_open_event_id} on my device on purpose. Say 'I see you closed the event'"
-        )
+    if source == "manual_tap":
+        if previously_open_event_id:
+            context_message = (
+                f"I just manually closed the event with Event ID {previously_open_event_id} on my device on purpose. Say 'I see you closed the event'"
+            )
+        else:
+            context_message = (
+                "I just manually closed the currently opened event on my device on purpose. Say 'I see you closed the event'"
+            )
     else:
-        context_message = (
-            "I just manually closed the currently opened event on my device on purpose. Say 'I see you closed the event'"
-        )
+        if previously_open_event_id:
+            context_message = (
+                f"I just closed the event with Event ID {previously_open_event_id} on my device on purpose. Say 'Event closed.' to acknowledge."
+            )
+        else:
+            context_message = (
+                "I just closed the currently opened event on my device on purpose. Say 'Event closed.' to acknowledge."
+            )
 
     await stream_manager.send_raw_event(
         S2sEvent.content_start_user_text(prompt_name, content_name)
@@ -520,6 +534,8 @@ async def websocket_handler(websocket: WebSocket):
                                     sent = await send_open_event_context(
                                         stream_manager,
                                         pending_open_event_context.get("event_id"),
+                                        pending_open_event_context.get("before_convo", False),
+                                        pending_open_event_context.get("source")
                                     )
                                     if sent:
                                         logger.info(
@@ -529,6 +545,7 @@ async def websocket_handler(websocket: WebSocket):
                                     sent = await send_closed_event_context(
                                         stream_manager,
                                         pending_open_event_context.get("event_id"),
+                                        pending_open_event_context.get("source")
                                     )
                                     if sent:
                                         logger.info(
@@ -547,7 +564,10 @@ async def websocket_handler(websocket: WebSocket):
                             stream_manager.last_open_event_update = None
                             logger.info(f"👉Set opened event ID: {stream_manager.open_event_id}")
                             sent = await send_open_event_context(
-                                stream_manager, stream_manager.open_event_id
+                                stream_manager, 
+                                stream_manager.open_event_id, 
+                                data["event"]["clientEvent"]["payload"].get("beforeConvo", False), 
+                                data["event"]["clientEvent"]["payload"].get("source")
                             )
                             if sent:
                                 logger.info("Sent opened event context to Nova Sonic")
@@ -555,6 +575,8 @@ async def websocket_handler(websocket: WebSocket):
                                 pending_open_event_context = {
                                     "is_open": True,
                                     "event_id": stream_manager.open_event_id,
+                                    "source": data["event"]["clientEvent"]["payload"].get("source"),
+                                    "before_convo": data["event"]["clientEvent"]["payload"].get("beforeConvo", False),
                                 }
                                 logger.info(
                                     "Deferred opened event context until promptStart is available"
@@ -566,7 +588,7 @@ async def websocket_handler(websocket: WebSocket):
                             stream_manager.last_open_event_update = None
                             logger.info(f"👉Cleared opened event ID due to event_closed")
                             sent = await send_closed_event_context(
-                                stream_manager, previous_open_event_id
+                                stream_manager, previous_open_event_id, data["event"]["clientEvent"]["payload"].get("source")
                             )
                             if sent:
                                 logger.info("Sent closed event context to Nova Sonic")
@@ -574,6 +596,7 @@ async def websocket_handler(websocket: WebSocket):
                                 pending_open_event_context = {
                                     "is_open": False,
                                     "event_id": previous_open_event_id,
+                                    "source": data["event"]["clientEvent"]["payload"].get("source"),
                                 }
                                 logger.info(
                                     "Deferred closed event context until promptStart is available"
