@@ -20,7 +20,7 @@ deserializer = TypeDeserializer()
 
 
 
-def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, timezone, open_event_id=None, last_open_event_update=None):
+def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, timezone, open_event_id=None, open_event_pre_last_update=None):
   try:
     # If there is no open event, we can't update content, so we should return an appropriate message
     if not open_event_id:
@@ -32,14 +32,14 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
     
     action = request_details.get("action", None)
     if action == "undo":
-      if not last_open_event_update:
+      if not open_event_pre_last_update:
         return {
           "result": "There is no prior open event update to undo.",
           "tool_name": "update_open_event",
           "action": "undo_noop"
         }
 
-      snapshot_event_id = last_open_event_update.get("event_id")
+      snapshot_event_id = open_event_pre_last_update.get("event_id")
       if snapshot_event_id and snapshot_event_id != open_event_id:
         return {
           "result": "Cannot undo because the open event changed.",
@@ -47,7 +47,7 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
           "action": "undo_noop"
         }
 
-      snapshot_event_data = last_open_event_update.get("event_data")
+      snapshot_event_data = open_event_pre_last_update.get("event_data")
       if isinstance(snapshot_event_data, str):
         snapshot_event_data = json.loads(snapshot_event_data)
 
@@ -60,6 +60,7 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
 
       try:
         ddb_snapshot_item = {k: serializer.serialize(v) for k, v in snapshot_event_data.items()}
+        logger.info(f"Restoring prior event snapshot in DynamoDB for eventId {open_event_id} and userId {user_id}. Snapshot data: {snapshot_event_data}")
         ddb_client.put_item(
           TableName='Events',
           Item=ddb_snapshot_item
@@ -74,7 +75,7 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
         "tool_name": "update_open_event",
         "action": "undo",
         "event_data": json.dumps(snapshot_event_data),
-        "updated_fields": json.dumps({})
+        "updated_fields": json.dumps(snapshot_event_data)
       }
     else:
       def _normalize_recurrence_frequency(raw_frequency, raw_time_unit, fallback_frequency=None):
@@ -98,12 +99,6 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
           return f"{int(frequency_str)}D"
 
         return frequency_str
-
-      def _parse_datetime(value):
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-          return parsed.replace(tzinfo=tz)
-        return parsed
 
       # get the event from DynamoDB
       ddb_event_item = ddb_client.get_item(
@@ -300,6 +295,7 @@ def update_open_event_tool(ddb_client, lambda_client, user_id, update_request, t
         "tool_name": "update_open_event",
         "action": "update",
         "event_data": json.dumps(updated_event),
+        "pre_update_snapshot": json.dumps(event_item),
         "updated_fields": json.dumps(updated_fields)
       }
       

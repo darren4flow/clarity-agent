@@ -96,7 +96,7 @@ class S2sSessionManager:
         self.end_conversation_requested = False
         
         self.open_event_id = None  # To track open event for calendar tools
-        self.last_open_event_update = None  # Stores previous open event snapshot for one-step undo
+        self.open_event_pre_last_update = None  # Stores previous open event snapshot for one-step undo
         
         # Track active tool processing tasks
         self.tool_processing_tasks = set()
@@ -169,7 +169,7 @@ class S2sSessionManager:
         self.audio_content_name = None
         self._session_end_sent = False
         self.open_event_id = None
-        self.last_open_event_update = None
+        self.open_event_pre_last_update = None
 
     async def initialize_stream(self):
         """Initialize the bidirectional stream with Bedrock."""
@@ -530,7 +530,7 @@ class S2sSessionManager:
             elif toolName == "update_event":
                 result = update_event(ddb_client, lambda_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "open_event":
-                self.last_open_event_update = None
+                self.open_event_pre_last_update = None
                 result = open_event(ddb_client, bedrock_client, opensearch_client, self.user_id, content, self.timezone)
             elif toolName == "update_open_event":
                 result = update_open_event_tool(
@@ -540,19 +540,19 @@ class S2sSessionManager:
                     content,
                     self.timezone,
                     self.open_event_id,
-                    self.last_open_event_update,
+                    self.open_event_pre_last_update,
                 )
-                if result.get("action") == "update" and result.get("event_data"):
-                    self.last_open_event_update = {
+                if result.get("action") == "update" and result.get("pre_update_snapshot"):
+                    self.open_event_pre_last_update = {
                         "event_id": self.open_event_id,
-                        "event_data": result.get("event_data"),
+                        "event_data": result.get("pre_update_snapshot"),
                     }
                 elif result.get("action") == "undo":
-                    self.last_open_event_update = None
+                    self.open_event_pre_last_update = None
             elif toolName == "close_event":
                 if self.open_event_id:
                     self.open_event_id = None
-                    self.last_open_event_update = None
+                    self.open_event_pre_last_update = None
                     result = {
                         "result": "Closed the event.",
                         "tool_name": "close_event"
