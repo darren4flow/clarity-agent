@@ -48,6 +48,7 @@ ddb_client = boto3.client('dynamodb', region_name='us-east-1')
 serializer = TypeSerializer()
 deserializer = TypeDeserializer()
 bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
+memory_client = boto3.client('bedrock-agentcore', region_name='us-east-1')
 lambda_client = boto3.client('lambda', region_name='us-east-1')
 
 # Initialize OpenSearch client
@@ -95,6 +96,7 @@ class S2sSessionManager:
         self.toolName = ""
         self.end_conversation_requested = False
         self.content_generation_stage_by_id = {}
+        self.conversation_history = []  # To store conversation history for context in tools
         
         self.open_event_id = None  # To track open event for calendar tools
         self.open_event_pre_last_update = None  # Stores previous open event snapshot for one-step undo
@@ -137,41 +139,6 @@ class S2sSessionManager:
         self.bedrock_client = BedrockRuntimeClient(config=config)
         logger.info("Bedrock client initialized successfully")
 
-    def reset_session_state(self):
-        """Reset session state for a new session."""
-        # Cancel any ongoing tool processing tasks
-        for task in list(self.tool_processing_tasks):
-            if not task.done():
-                task.cancel()
-        self.tool_processing_tasks.clear()
-        
-        # Clear queues
-        while not self.audio_input_queue.empty():
-            try:
-                self.audio_input_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-        
-        while not self.output_queue.empty():
-            try:
-                self.output_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-        
-        # Reset tool use state
-        self.toolUseContent = ""
-        self.toolUseId = ""
-        self.toolName = ""
-        self.end_conversation_requested = False
-        self.content_generation_stage_by_id.clear()
-        
-        # Reset session information
-        self.prompt_name = None
-        self.content_name = None
-        self.audio_content_name = None
-        self._session_end_sent = False
-        self.open_event_id = None
-        self.open_event_pre_last_update = None
 
     async def initialize_stream(self):
         """Initialize the bidirectional stream with Bedrock."""
@@ -358,7 +325,11 @@ class S2sSessionManager:
                             logger.debug(f"Received contentEnd: type={content_end_data.get('type')}, stopReason={content_end_data.get('stopReason')}, role={content_end_data.get('role', 'N/A')}")
                         
                         if event_name == "textOutput" and self.content_generation_stage_by_id.get(event_data.get("contentId")) == "FINAL":
-                            print("👉 Voice assistant text output:", event_data, flush=True)
+                            print(f"👉 Transcription: ({event_data.get('role', 'N/A')}) {event_data.get('content', '')}", flush=True)
+                            self.conversation_history.append({
+                                "role": event_data.get("role", "N/A"),
+                                "content": event_data.get("content", "")
+                            })
                         
                         # Handle tool use detection
                         if event_name == 'toolUse':
@@ -680,11 +651,16 @@ class S2sSessionManager:
             self.prompt_name = None
             self.content_name = None
             self.audio_content_name = None
+            
+            self.content_generation_stage_by_id.clear()
+            self.conversation_history.clear()
         
             # Set stream/tasks to None to ensure they're properly cleaned up
             self.stream = None
             self.response_task = None
             self.audio_task = None
+            self.open_event_id = None
+            self.open_event_pre_last_update = None
             logger.info("Bedrock stream closed successfully")
         finally:
             self._closing = False
