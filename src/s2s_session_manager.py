@@ -94,6 +94,7 @@ class S2sSessionManager:
         self.toolUseId = ""
         self.toolName = ""
         self.end_conversation_requested = False
+        self.content_generation_stage_by_id = {}
         
         self.open_event_id = None  # To track open event for calendar tools
         self.open_event_pre_last_update = None  # Stores previous open event snapshot for one-step undo
@@ -162,6 +163,7 @@ class S2sSessionManager:
         self.toolUseId = ""
         self.toolName = ""
         self.end_conversation_requested = False
+        self.content_generation_stage_by_id.clear()
         
         # Reset session information
         self.prompt_name = None
@@ -332,21 +334,41 @@ class S2sSessionManager:
                     event_name = None
                     if 'event' in json_data:
                         event_name = list(json_data["event"].keys())[0]
+                        event_data = json_data["event"][event_name]
+                        
+                        if event_name == "contentStart":
+                            content_id = event_data.get("contentId")
+                            if content_id:
+                                additional_model_fields = event_data.get("additionalModelFields")
+                                if isinstance(additional_model_fields, str):
+                                    try:
+                                        additional_model_fields = json.loads(additional_model_fields)
+                                    except json.JSONDecodeError:
+                                        additional_model_fields = {}
+                                if not isinstance(additional_model_fields, dict):
+                                    additional_model_fields = {}
+                                self.content_generation_stage_by_id[content_id] = additional_model_fields.get("generationStage")
                         
                         # Log contentEnd events for debugging
                         if event_name == "contentEnd":
-                            content_end_data = json_data["event"]["contentEnd"]
+                            content_end_data = event_data
+                            content_id = content_end_data.get("contentId")
+                            if content_id:
+                                self.content_generation_stage_by_id.pop(content_id, None)
                             logger.debug(f"Received contentEnd: type={content_end_data.get('type')}, stopReason={content_end_data.get('stopReason')}, role={content_end_data.get('role', 'N/A')}")
+                        
+                        if event_name == "textOutput" and self.content_generation_stage_by_id.get(event_data.get("contentId")) == "FINAL":
+                            print("👉 Voice assistant text output:", event_data, flush=True)
                         
                         # Handle tool use detection
                         if event_name == 'toolUse':
-                            self.toolUseContent = json_data['event']['toolUse']
-                            self.toolName = json_data['event']['toolUse']['toolName']
-                            self.toolUseId = json_data['event']['toolUse']['toolUseId']
+                            self.toolUseContent = event_data
+                            self.toolName = event_data['toolName']
+                            self.toolUseId = event_data['toolUseId']
                             logger.info(f"Tool use detected: {self.toolName}, ID: {self.toolUseId}")
                         # Process tool use when content ends
-                        elif event_name == 'contentEnd' and json_data['event'][event_name].get('type') == 'TOOL':
-                            prompt_name = json_data['event']['contentEnd'].get("promptName")
+                        elif event_name == 'contentEnd' and event_data.get('type') == 'TOOL':
+                            prompt_name = event_data.get("promptName")
                             logger.debug("Starting tool processing in background")
                             # Process tool in background task to avoid blocking
                             task = asyncio.create_task(
