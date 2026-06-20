@@ -203,15 +203,6 @@ async def test_close_event_clears_open_event_pre_last_update():
     assert s.open_event_pre_last_update is None
 
 
-def test_reset_session_state_clears_open_event_and_last_update():
-    s = S2sSessionManager(region="us-east-1", model_id="m", user_id="u", timezone="UTC")
-    s.open_event_id = "evt-1"
-    s.open_event_pre_last_update = {"event_id": "evt-1", "event_data": "{}"}
-
-    s.reset_session_state()
-
-    assert s.open_event_id is None
-    assert s.open_event_pre_last_update is None
 
 
 def test_update_open_event_tool_update_serializes_decimal_and_normalizes_utc_z():

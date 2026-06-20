@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import warnings
 import uuid
 import logging
@@ -97,6 +98,8 @@ class S2sSessionManager:
         self.end_conversation_requested = False
         self.content_generation_stage_by_id = {}
         self.conversation_history = []  # To store conversation history for context in tools
+        self._conversation_history_flushed = False
+        self._memory_client_token = str(uuid.uuid4())
         
         self.open_event_id = None  # To track open event for calendar tools
         self.open_event_pre_last_update = None  # Stores previous open event snapshot for one-step undo
@@ -569,6 +572,90 @@ class S2sSessionManager:
         except Exception as ex:
             logger.error(f"[Tool Error] Exception in processToolUse for {toolName}: {ex}", exc_info=True)
             return {"result": "An error occurred while attempting to retrieve information related to the toolUse event."}
+
+    def _build_memory_payload_from_history(self):
+        """Build AgentCore conversational payload entries from final transcript turns."""
+        payload = []
+        has_user_turn = False
+
+        for turn in self.conversation_history:
+            if not isinstance(turn, dict):
+                continue
+
+            role = str(turn.get("role", "")).upper()
+            if role not in {"USER", "ASSISTANT"}:
+                continue
+
+            content = turn.get("content", "")
+            if content is None:
+                continue
+
+            text = str(content).strip()
+            if not text:
+                continue
+
+            if role == "USER":
+                has_user_turn = True
+
+            payload.append(
+                {
+                    "conversational": {
+                        "role": role,
+                        "content": {
+                            "text": text,
+                        },
+                    }
+                }
+            )
+
+        return payload if has_user_turn else []
+
+    async def _flush_conversation_history_to_memory(self):
+        """Persist final conversation transcript to AgentCore Memory on a best-effort basis."""
+        if self._conversation_history_flushed:
+            logger.debug("Conversation history already flushed to AgentCore memory")
+            return
+
+        memory_id = os.environ.get("BEDROCK_AGENTCORE_MEMORY_ID")
+        if not memory_id:
+            logger.info("Skipping AgentCore memory persistence: BEDROCK_AGENTCORE_MEMORY_ID is not set")
+            return
+
+        payload = self._build_memory_payload_from_history()
+        if not payload:
+            logger.info("Skipping AgentCore memory persistence: no user/assistant transcript turns to persist")
+            return
+
+        self._conversation_history_flushed = True
+        memory_session_id = self.prompt_name or f"voice_{uuid.uuid4().hex}"
+
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(
+                    memory_client.create_event,
+                    memoryId=memory_id,
+                    actorId=self.user_id,
+                    sessionId=memory_session_id,
+                    eventTimestamp=datetime.now(ZoneInfo("UTC")),
+                    payload=payload,
+                    clientToken=self._memory_client_token,
+                    metadata={
+                        "source": {"stringValue": "clarity_voice_session"},
+                        "modelId": {"stringValue": self.model_id},
+                        "timezone": {"stringValue": self.timezone},
+                    },
+                ),
+                timeout=3.0,
+            )
+            logger.info(
+                "👉 Persisted %s conversation turns to AgentCore memory session %s",
+                len(payload),
+                memory_session_id,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Timed out while persisting conversation history to AgentCore memory", exc_info=True)
+        except Exception:
+            logger.error("Failed to persist conversation history to AgentCore memory", exc_info=True)
     
     async def close(self):
         """Close the stream properly."""
@@ -626,6 +713,8 @@ class S2sSessionManager:
                     logger.debug("Response task did not exit after input close; cancelling as fallback")
                     self.response_task.cancel()
                     await asyncio.gather(self.response_task, return_exceptions=True)
+
+            await self._flush_conversation_history_to_memory()
         
             # Clear audio queue to prevent processing old audio data
             while not self.audio_input_queue.empty():
