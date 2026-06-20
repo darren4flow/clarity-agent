@@ -597,6 +597,10 @@ class S2sSessionManager:
             if role == "USER":
                 has_user_turn = True
 
+            if payload and payload[-1]["conversational"]["role"] == role:
+                payload[-1]["conversational"]["content"]["text"] += f" {text}"
+                continue
+
             payload.append(
                 {
                     "conversational": {
