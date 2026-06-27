@@ -21,6 +21,7 @@ Most voice assistants struggle with natural, paraphrased scheduling commands and
   - Delete events
 - Hybrid event retrieval using OpenSearch + Titan embeddings.
 - Recurring-event logic for both one-off edits and this-and-future changes.
+- Self-managed long-term memory strategy for storing user preferences and long-term goals in Bedrock Agentcore
 
 ## High-level architecture
 
@@ -40,7 +41,7 @@ flowchart LR
 
 - Python 3.12
 - Fast API (WebSocket server)
-- AWS Bedrock AgentCore + Bedrock Runtime
+- AWS Bedrock AgentCore + Bedrock Runtime + Agentcore Memory
 - Amazon Nova Sonic 2 (speech-to-speech)
 - Amazon Titan Embeddings (`amazon.titan-embed-text-v1`)
 - DynamoDB
@@ -84,6 +85,7 @@ pip install -r requirements.txt
 ```bash
 export AWS_ACCESS_KEY_ID=<your_access_key_id>
 export AWS_SECRET_ACCESS_KEY=<your_secret_access_key>
+export BEDROCK_AGENTCORE_MEMORY_ID=<your_memory_id>
 # Optional, if needed in your AWS setup:
 export AWS_REGION=<your_region>
 ```
@@ -101,6 +103,7 @@ docker build -f .bedrock_agentcore/clarityAgent/Dockerfile -t clarity-agent:loca
 docker run --rm -it -p 8080:8080 \
   -e AWS_ACCESS_KEY_ID=<aws_access_key_id> \
   -e AWS_SECRET_ACCESS_KEY=<aws_secret_access_key> \
+  -e BEDROCK_AGENTCORE_MEMORY_ID=<your_memory_id>  \
   -e AWS_REGION=<aws_region> \
   --name clarity-agent-local clarity-agent:local
 ```
