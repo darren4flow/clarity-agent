@@ -546,8 +546,9 @@ def get_utc_day_bounds(local_date: date, timezone_str: str) -> tuple[datetime, d
 
 
 def generate_update_content(lambda_client, user_id, prompt, event_content):
+    empty_doc = {"content": [{"type": "paragraph"}], "type": "doc"}
     if event_content is None:
-        event_content = {"content": [{"type": "paragraph"}], "type": "doc"}
+        event_content = empty_doc
     payload = {
         "userId": user_id,
         "prompt": prompt,
@@ -563,10 +564,27 @@ def generate_update_content(lambda_client, user_id, prompt, event_content):
     if response.get("FunctionError"):
         logger.error(f"Lambda returned an error: {raw_payload}")
         raise Exception(f"Error from content update Lambda: {raw_payload}")
+
+    response_status_code = response.get("StatusCode")
+    if response_status_code is not None and not 200 <= int(response_status_code) < 300:
+        logger.error(f"Lambda invoke returned status {response_status_code}: {raw_payload}")
+        raise Exception(f"Error from content update Lambda: {raw_payload}")
+
     lambda_result = json.loads(raw_payload) if raw_payload else {}
-    result_body = json.loads(lambda_result.get("body", "{}"))
+
+    lambda_status_code = lambda_result.get("statusCode")
+    if lambda_status_code is not None and not 200 <= int(lambda_status_code) < 300:
+        logger.error(f"Lambda payload returned status {lambda_status_code}: {raw_payload}")
+        raise Exception(f"Error from content update Lambda: {raw_payload}")
+
+    result_body = lambda_result.get("body", {})
+    if isinstance(result_body, str):
+        result_body = json.loads(result_body) if result_body else {}
+    elif result_body is None:
+        result_body = {}
+
     logger.info(f"Lambda result for content update: {lambda_result}")
-    return result_body.get("doc", {"content": [{"type": "paragraph"}], "type": "doc"})
+    return result_body.get("doc", empty_doc)
 
 
 def add_ids_to_notifications(notifications):

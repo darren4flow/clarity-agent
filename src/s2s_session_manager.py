@@ -642,12 +642,7 @@ class S2sSessionManager:
                     sessionId=memory_session_id,
                     eventTimestamp=datetime.now(ZoneInfo("UTC")),
                     payload=payload,
-                    clientToken=self._memory_client_token,
-                    metadata={
-                        "source": {"stringValue": "clarity_voice_session"},
-                        "modelId": {"stringValue": self.model_id},
-                        "timezone": {"stringValue": self.timezone},
-                    },
+                    clientToken=self._memory_client_token
                 ),
                 timeout=3.0,
             )
